@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Multiplayer Noodle Snake</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <title>Snooooooooooooke you!</title>
   <style>
     :root {
       --bg0: #0d1021;
@@ -89,7 +89,7 @@
       font-size: 13px;
       font-weight: 800;
       letter-spacing: 0.08em;
-      text-transform: uppercase;
+      /*text-transform: uppercase;*/
       margin-bottom: 8px;
     }
 
@@ -148,9 +148,17 @@
     button:active { transform: translateY(1px); }
     button:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
 
-    .secondary {
+    .alternativeforbuttons {
+      color: var(--text);
+      background: linear-gradient(135deg, #04e6fb, #f8ab13);
+      border: 1px solid var(--line);
+      box-shadow: none;
+    }
+
+    .grayed {
       color: var(--text);
       background: rgba(255, 255, 255, 0.12);
+      background: linear-gradient(135deg, #ffd166, #ff8fab);
       border: 1px solid var(--line);
       box-shadow: none;
     }
@@ -200,6 +208,25 @@
       gap: 12px;
       flex-wrap: wrap;
       margin-bottom: 16px;
+    }
+
+    .top-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .top-actions button {
+      min-height: 44px;
+      border-radius: 15px;
+      padding: 0 14px;
+    }
+
+    .danger {
+      color: #fff;
+      background: linear-gradient(135deg, rgba(255, 71, 126, 0.95), rgba(255, 92, 138, 0.78));
+      border: 1px solid rgba(255, 255, 255, 0.2);
     }
 
     .pills {
@@ -305,6 +332,7 @@
     .score-list {
       display: grid;
       gap: 10px;
+      height: 225px;
     }
 
     .score-row {
@@ -333,16 +361,20 @@
     .color-dot { display: inline-block; width: 10px; height: 10px; border-radius: 999px; margin-right: 8px; vertical-align: 0; }
 
     .chat {
-      flex: 1;
-      min-height: 280px;
+      flex: 0 0 640px;
+      height: 640px;
+      min-height: 0;
+      max-height: 640px;
       display: flex;
       flex-direction: column;
       gap: 10px;
     }
 
     .chat-log {
-      flex: 1;
-      overflow: auto;
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
       padding: 12px;
       border-radius: 18px;
       background: rgba(0, 0, 0, 0.18);
@@ -442,6 +474,209 @@
     .touch-pad .down { grid-column: 2; grid-row: 2; }
     .touch-pad .right { grid-column: 3; grid-row: 2; }
 
+
+
+    .mobile-layer {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 24;
+      display: none;
+    }
+
+    .joystick-zone {
+      position: fixed;
+      left: max(18px, env(safe-area-inset-left));
+      bottom: max(18px, env(safe-area-inset-bottom));
+      width: 168px;
+      height: 168px;
+      pointer-events: auto;
+      border-radius: 999px;
+      background: radial-gradient(circle, rgba(255,255,255,0.10), rgba(255,255,255,0.025) 62%, transparent 64%);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      backdrop-filter: blur(8px);
+    }
+
+    .sprint-button {
+      position: fixed;
+      right: max(22px, env(safe-area-inset-right));
+      bottom: max(42px, env(safe-area-inset-bottom));
+      width: 94px;
+      height: 94px;
+      min-height: 0;
+      border-radius: 999px;
+      pointer-events: auto;
+      color: #071513;
+      background: radial-gradient(circle at 35% 25%, #fff, #80ed99 36%, #06d6a0 72%);
+      box-shadow: 0 0 30px rgba(128, 237, 153, 0.45), 0 18px 42px rgba(0, 0, 0, 0.38);
+      text-transform: uppercase;
+      font-size: 13px;
+      letter-spacing: 0.08em;
+    }
+
+    .sprint-button.ready {
+      animation: sprintReady 900ms ease-in-out infinite alternate;
+    }
+
+    .sprint-button.fired {
+      animation: sprintFire 260ms ease-out 1;
+    }
+
+    @keyframes sprintReady {
+      from { transform: scale(1); filter: brightness(1); }
+      to { transform: scale(1.045); filter: brightness(1.12); }
+    }
+
+    @keyframes sprintFire {
+      from { transform: scale(0.9); }
+      to { transform: scale(1.08); }
+    }
+
+    .mobile-chat-toggle {
+      position: fixed;
+      right: max(22px, env(safe-area-inset-right));
+      top: max(82px, env(safe-area-inset-top));
+      width: 54px;
+      height: 54px;
+      min-height: 0;
+      border-radius: 999px;
+      pointer-events: auto;
+      display: none;
+      place-items: center;
+      color: #080b18;
+      background: linear-gradient(135deg, #ffd166, #ff8fab);
+      font-size: 23px;
+      box-shadow: var(--shadow);
+    }
+
+    .mobile-chat-marker {
+      position: absolute;
+      top: -4px;
+      right: -4px;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 5px;
+      display: none;
+      place-items: center;
+      border-radius: 999px;
+      color: #fff;
+      background: #ff477e;
+      border: 2px solid #0d1021;
+      font-size: 11px;
+      font-weight: 1000;
+    }
+
+    .mobile-chat-marker.visible { display: grid; }
+
+    .rotate-warning {
+      position: fixed;
+      inset: 0;
+      z-index: 80;
+      display: none;
+      place-items: center;
+      padding: 28px;
+      background: rgba(5, 7, 18, 0.9);
+      backdrop-filter: blur(10px);
+      text-align: center;
+    }
+
+    .rotate-card {
+      width: min(420px, 100%);
+      padding: 28px;
+      border-radius: 28px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.10);
+      box-shadow: var(--shadow);
+    }
+
+    .rotate-icon {
+      font-size: 68px;
+      line-height: 1;
+      margin-bottom: 8px;
+      animation: pulse 700ms ease-in-out infinite alternate;
+    }
+
+    body.mobile .mobile-layer { display: block; }
+    body.mobile .mobile-chat-toggle { display: grid; }
+    body.mobile .touch-pad { display: none !important; }
+    body.mobile.nipple-missing .touch-pad {
+      position: fixed;
+      left: max(18px, env(safe-area-inset-left));
+      bottom: max(18px, env(safe-area-inset-bottom));
+      z-index: 25;
+      display: grid !important;
+      pointer-events: auto;
+      margin: 0;
+    }
+    body.mobile.portrait .rotate-warning { display: grid; }
+
+    body.mobile {
+      overscroll-behavior: none;
+      touch-action: none;
+    }
+
+    body.mobile .app {
+      width: 100%;
+      padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+    }
+
+    body.mobile .game-shell {
+      min-height: 100dvh;
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    body.mobile .topbar {
+      padding: 10px 74px 10px 10px;
+      margin-bottom: 8px;
+      border-radius: 18px;
+    }
+
+    body.mobile .pill {
+      padding: 7px 9px;
+      font-size: 12px;
+    }
+
+    body.mobile #copyGameId { display: none; }
+    body.mobile .game-card { padding: 8px; border-radius: 20px; }
+    body.mobile canvas {
+      min-height: 0;
+      height: calc(100dvh - 116px);
+      border-radius: 16px;
+    }
+
+    body.mobile .panel {
+      min-height: auto;
+      margin-top: 8px;
+      padding: 10px;
+      border-radius: 20px;
+    }
+
+    body.mobile .panel > section:first-child {
+      max-width: min(520px, calc(100vw - 20px));
+    }
+
+    body.mobile .chat {
+      display: none;
+      position: fixed;
+      right: max(12px, env(safe-area-inset-right));
+      bottom: max(12px, env(safe-area-inset-bottom));
+      width: min(420px, calc(100vw - 24px));
+      height: min(70dvh, 460px);
+      z-index: 62;
+      padding: 14px;
+      border-radius: 24px;
+      border: 1px solid var(--line);
+      background: rgba(13, 16, 33, 0.94);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    body.mobile .chat.mobile-open { display: flex; }
+    body.mobile .chat,
+    body.mobile .chat * { touch-action: auto; }
+    body.mobile .chat-log { min-height: 0; touch-action: pan-y; -webkit-overflow-scrolling: touch; }
+    body.mobile .mini-help { display: none; }
+
     @media (max-width: 1050px) {
       .game-shell { grid-template-columns: 1fr; }
       .panel { min-height: 460px; }
@@ -452,7 +687,10 @@
       .landing-card { padding: 22px; border-radius: 24px; }
       .actions { grid-template-columns: 1fr; }
       .row { flex-direction: column; align-items: stretch; }
+      .top-actions { width: 100%; }
+      .top-actions button { flex: 1; }
       canvas { min-height: 360px; height: 58vh; }
+      .chat { height: 640px; max-height: 640px; flex-basis: 640px; }
       .touch-pad { display: grid; }
     }
   </style>
@@ -461,18 +699,18 @@
   <main class="app">
     <section id="landing" class="hero">
       <div class="landing-card">
-        <h1>Noodle Snake</h1>
-        <p class="subtitle">Fast multiplayer snake with chat, bots, crowns and deeply silly noodles.</p>
+        <h1>Snooooooooke!</h1>
+        <p class="subtitle">Snake multiplayer with chat, bots, crowns and deeply silly noodles.</p>
 
-        <label for="nickname">Nickname, 5-15 chars, A-Z and 0-9</label>
+        <label for="nickname">Nickname, (Letters & Numbers)</label>
         <div class="row">
           <input id="nickname" maxlength="15" autocomplete="nickname" spellcheck="false" />
-          <button id="randomName" class="secondary" type="button">Random</button>
+          <button id="randomName" class="alternativeforbuttons" type="button">Random</button>
         </div>
 
         <div class="actions">
-          <button id="justPlay" type="button">Just Play</button>
-          <button id="showJoin" class="secondary" type="button">Join Game</button>
+          <button id="justPlay" class="alternativeforbuttons" type="button">Just Play</button>
+          <button id="showJoin" type="button">Join Game</button>
           <button id="createGame" type="button">Create Game</button>
         </div>
 
@@ -485,7 +723,7 @@
         </div>
 
         <div id="landingError" class="error-line"></div>
-        <div class="hint">Tip: Create Game opens a 30 second warm-up lobby. Share the Game-ID with friends.</div>
+        <div class="hint">Tip: <span id="meaningfultips">Tell your friends in chat how much you appreciate them for being better.</span></div>
       </div>
     </section>
 
@@ -494,11 +732,14 @@
         <div class="topbar">
           <div class="pills">
             <div id="gameIdPill" class="pill gold">Game -----</div>
-            <div id="levelPill" class="pill">Level Chicken</div>
+            <div id="levelPill" class="pill">Level: Chicken</div>
             <div id="speedPill" class="pill">10.0 tick/s</div>
             <div id="playersPill" class="pill">0/16 players</div>
           </div>
-          <button id="copyGameId" class="secondary" type="button">Copy Game-ID</button>
+          <div class="top-actions">
+            <button id="leaveGame" class="danger" type="button">Leave Game</button>
+            <button id="copyGameId" class="secondary" type="button">Copy Game-ID</button>
+          </div>
         </div>
 
         <div class="game-card">
@@ -540,13 +781,27 @@
             <input id="chatInput" maxlength="255" placeholder="Say noodle things..." autocomplete="off" />
             <button type="submit">Send</button>
           </form>
-          <div class="mini-help">Controls: arrow keys or WASD. The browser sends direction plus local telemetry every animation frame when the socket is not backed up.</div>
+          <div class="mini-help">Use Arrow-Keys or WASD, Space to sprint when big enough.</div>
         </section>
       </aside>
     </section>
   </main>
 
   <div id="toastArea" class="toast-area"></div>
+
+  <div id="mobileLayer" class="mobile-layer">
+    <div id="joystickZone" class="joystick-zone" aria-label="Virtual joystick"></div>
+    <button id="sprintButton" class="sprint-button" type="button">Sprint</button>
+    <button id="mobileChatToggle" class="mobile-chat-toggle" type="button" aria-label="Open game chat">💬<span id="mobileChatMarker" class="mobile-chat-marker">0</span></button>
+  </div>
+
+  <div id="rotateWarning" class="rotate-warning">
+    <div class="rotate-card">
+      <div class="rotate-icon">📱↔️</div>
+      <h2>Rotate to landscape</h2>
+      <p class="subtitle">Noodle Snake is built for wide-screen chaos. Turn your device sideways for the best controls.</p>
+    </div>
+  </div>
 
   <div id="gameIdModal" class="modal-backdrop">
     <div class="modal">
@@ -560,6 +815,7 @@
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/nipplejs@0.10.2/dist/nipplejs.js"></script>
   <script>
     "use strict";
 
@@ -588,6 +844,15 @@
     const toastArea = $("toastArea");
     const gameIdModal = $("gameIdModal");
     const modalGameId = $("modalGameId");
+    const chatSection = document.querySelector(".chat");
+    const joystickZone = $("joystickZone");
+    const sprintButton = $("sprintButton");
+    const mobileChatToggle = $("mobileChatToggle");
+    const mobileChatMarker = $("mobileChatMarker");
+
+    const isMobileDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    document.body.classList.toggle("mobile", isMobileDevice);
 
     let ws = null;
     let playerId = null;
@@ -604,11 +869,127 @@
     let cellSize = 10;
     let offsetX = 0;
     let offsetY = 0;
+    let sprintSeq = 0;
+    let identityPulseStartedAt = 0;
+    let identityPulseUntil = 0;
+    let manualLeave = false;
+    let mobileChatOpen = false;
+    let unreadChatCount = 0;
+    let joystickManager = null;
+
+    const NICKNAME_POOL = [
+      "SirHissALot", "SnekAndDestroy", "NoodleNinja", "VenomVroom",
+      "HissFit", "ScaleMailHero", "CobraComedian", "SlitherMcWinner",
+      "RattleAndRoll", "SnackSnake", "HissMissile", "SneakySnek",
+      "FangYouVeryMuch", "CoilStoryBro", "HissAndTell", "ViperDiaper",
+      "DangerNoodleDude", "BoopTheSnoot", "AnacondaDont", "SssnackAttack",
+      "ScaleBait", "RattleBattle", "HissyMcHissface", "SerpentSurfer",
+      "CobraGuyNo", "PythonPanic", "ViperWiper", "SnekkedOut",
+      "HissQuake", "NoodleWithAttitude", "CoilMeMaybe", "FangDangIt",
+      "SlitherWizard", "BoaBonk", "VenomBacon", "SssuperNoob",
+      "RattleSnacc", "SnakeOilBoss", "HisstericalHitman", "ViperOfVibes",
+      "CobraCabana", "SlitherMeTimbers", "SnekInTheGrass", "BoaTeaParty",
+      "FangTasticFail", "RattleMeThis", "HissLord", "SerpentSauce",
+      "SnekflixAndKill", "PythonTheGreat", "SlippySerpent", "HissKebab",
+      "VenomMuffin", "CoilCrusher", "FangFumbler", "BoaNana",
+      "RattleRascal", "SssaltLord", "SnekSnackStack", "CobraCorn",
+      "HissHappens", "ViperHyper", "SlitherCritter", "ScaleGoblin",
+      "NoodleBoss", "RattleRager", "BoaTheBuilder", "FangBurger",
+      "HissMyAce", "SssweatySerpent", "VenomousPotato", "SneksOnDeck",
+      "CobraClown", "PythonPunchline", "RattleRocket", "SlitherSniper",
+      "Hissnado", "Snekzilla", "Fangster", "BoaConstrictLOL",
+      "ViperNapper", "SssneakPeek", "CoilWhirl", "SnakeCharmer99",
+      "RattleTrapChamp", "HissTheSeason", "DangerNoodleX", "VenomToast",
+      "ScaleFail", "SlitherSplasher", "CobraBroski", "SnekSensei",
+      "FangFlopper", "BoaNooblet", "RattleTattle", "HissyFizzy",
+      "PythonOfPuns", "SssurpriseAttack", "SirNoodle", "SneakySneki",
+      "ZigZag",
+    ];
+
+    const STUPID_USELESS_TIPS = [
+            "Create a new game and share the Game-ID with friends.",
+            "Newly created games have 30 seconds warm-up.",
+            "Just play, to just play.",
+            "Once a nooooodle you can sprint.",
+            "Loooser nooodles become food.",
+            "Tell your friends in chat how much you appreciate them for being better!"
+    ];
+
+    function updateOrientationClass() {
+      if (!isMobileDevice) return;
+      const portrait = window.matchMedia && window.matchMedia("(orientation: portrait)").matches;
+      document.body.classList.toggle("portrait", Boolean(portrait));
+    }
+
+    function requestLandscape() {
+      if (!isMobileDevice) return;
+      updateOrientationClass();
+      try {
+        if (screen.orientation && typeof screen.orientation.lock === "function") {
+          screen.orientation.lock("landscape").catch(() => {});
+        }
+      } catch (_) {}
+    }
+
+    function initMobileControls() {
+      if (!isMobileDevice) return;
+      updateOrientationClass();
+      if (window.nipplejs && joystickZone) {
+        joystickManager = window.nipplejs.create({
+          zone: joystickZone,
+          mode: "static",
+          position: { left: "50%", top: "50%" },
+          size: 118,
+          threshold: 0.18,
+          color: "white",
+          restOpacity: 0.62,
+        });
+        joystickManager.on("move", (_event, data) => {
+          if (!data || !data.vector) return;
+          const vx = data.vector.x || 0;
+          const vy = data.vector.y || 0;
+          if (Math.abs(vx) < 0.18 && Math.abs(vy) < 0.18) return;
+          const dir = Math.abs(vx) > Math.abs(vy) ? (vx > 0 ? "right" : "left") : (vy > 0 ? "up" : "down");
+          changeDirection(dir);
+        });
+        joystickManager.on("dir", (_event, data) => {
+          const dir = data && data.direction && data.direction.angle;
+          if (dir) changeDirection(dir);
+        });
+      } else {
+        document.body.classList.add("nipple-missing");
+      }
+    }
+
+    function setMobileChatOpen(open) {
+      if (!chatSection) return;
+      mobileChatOpen = Boolean(open);
+      chatSection.classList.toggle("mobile-open", mobileChatOpen);
+      mobileChatToggle.setAttribute("aria-label", mobileChatOpen ? "Close game chat" : "Open game chat");
+      if (mobileChatOpen) {
+        unreadChatCount = 0;
+        updateMobileChatMarker();
+        setTimeout(() => chatInput.focus({ preventScroll: true }), 80);
+      }
+    }
+
+    function updateMobileChatMarker() {
+      if (!mobileChatMarker) return;
+      mobileChatMarker.textContent = unreadChatCount > 9 ? "9+" : String(unreadChatCount);
+      mobileChatMarker.classList.toggle("visible", isMobileDevice && unreadChatCount > 0);
+    }
+
+    function startIdentityPulse() {
+      identityPulseUntil = performance.now() + 5000;
+    }
+
+    function randomTip() {
+      return STUPID_USELESS_TIPS[Math.floor(Math.random() * STUPID_USELESS_TIPS.length)] || "Use WASD or arrow keys and spacebar.";
+    }
 
     function randomNickname() {
-      const left = ["Noodle", "Wiggle", "Pixel", "Snake", "Turbo", "Munch", "Bento", "Zippy", "Sauce", "Crunch"];
-      const right = Math.floor(100 + Math.random() * 900);
-      return `${left[Math.floor(Math.random() * left.length)]}${right}`.slice(0, 15);
+      const validNames = NICKNAME_POOL.filter(validateNickname);
+      return validNames[Math.floor(Math.random() * validNames.length)] || "SirNoodle";
     }
 
     function validateNickname(name) {
@@ -644,6 +1025,7 @@
     }
 
     function startConnection(initialPayload) {
+      requestLandscape();
       const nickname = nicknameInput.value.trim();
       if (!validateNickname(nickname)) {
         setLandingError("Nickname must be 5-15 characters and use only A-Z, a-z and 0-9.");
@@ -662,6 +1044,13 @@
       latestState = null;
       previousState = null;
       pendingChatMessages = [];
+      sprintSeq = 0;
+      identityPulseStartedAt = 0;
+      identityPulseUntil = 0;
+      unreadChatCount = 0;
+      updateMobileChatMarker();
+      setMobileChatOpen(false);
+      manualLeave = false;
       chatLog.innerHTML = "";
       deadOverlay.classList.remove("visible");
 
@@ -679,6 +1068,10 @@
 
       ws.addEventListener("close", () => {
         connected = false;
+        if (manualLeave) {
+          manualLeave = false;
+          return;
+        }
         if (gameShell.classList.contains("visible")) {
           showToast("Connection closed. Refresh to reconnect.");
         } else {
@@ -729,6 +1122,9 @@
         previousState = latestState;
         latestState = msg;
         lastStateAt = performance.now();
+        if (playerId && msg.phase === "running" && (!previousState || previousState.gameId !== msg.gameId || previousState.phase !== "running")) {
+          startIdentityPulse();
+        }
         updateHud(msg);
         return;
       }
@@ -749,6 +1145,11 @@
 
       if (msg.type === "round_winner") {
         showToast(msg.message || "Round winner!");
+        return;
+      }
+
+      if (msg.type === "left_game") {
+        resetToLanding(msg.message || "You left the game.");
         return;
       }
 
@@ -775,6 +1176,38 @@
       }
     }
 
+    function resetToLanding(message = "") {
+      landing.style.display = "";
+      gameShell.classList.remove("visible");
+      closeModal();
+      deadOverlay.classList.remove("visible");
+      warmupOverlay.classList.remove("visible");
+      latestState = null;
+      previousState = null;
+      playerId = null;
+      gameId = null;
+      connected = false;
+      hasDied = false;
+      currentDir = "right";
+      identityPulseStartedAt = 0;
+      identityPulseUntil = 0;
+      chatLog.innerHTML = "";
+      setLandingError(message);
+      resizeCanvas();
+    }
+
+    function leaveCurrentGame() {
+      manualLeave = true;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        send({ type: "leave_game" }, true);
+        try { ws.close(1000, "leave_game"); } catch (_) {}
+      } else if (ws) {
+        try { ws.close(); } catch (_) {}
+      }
+      resetToLanding("You left the game. Pick a new noodle adventure.");
+      showToast("Left game.");
+    }
+
     function addChatMessage(msg) {
       const el = document.createElement("div");
       el.className = `chat-msg ${msg.kind === "system" ? "system" : ""}`;
@@ -790,11 +1223,24 @@
       chatLog.appendChild(el);
       while (chatLog.childNodes.length > 80) chatLog.firstChild.remove();
       chatLog.scrollTop = chatLog.scrollHeight;
+      if (isMobileDevice && gameShell.classList.contains("visible") && !mobileChatOpen && !options.silent) {
+        unreadChatCount += 1;
+        updateMobileChatMarker();
+      }
+    }
+
+    function startIdentityPulse() {
+      identityPulseStartedAt = performance.now();
+      identityPulseUntil = identityPulseStartedAt + 5000;
     }
 
     function updateHud(state) {
+      if (state.phase === "running" && (!previousState || previousState.phase !== "running")) {
+        startIdentityPulse();
+      }
+
       $("gameIdPill").textContent = `Game ${state.gameId}`;
-      $("levelPill").textContent = `Level ${state.level}`;
+      $("levelPill").textContent = `Level: ${state.level}`;
       $("speedPill").textContent = `${Number(state.tickHz || 0).toFixed(1)} tick/s`;
       $("playersPill").textContent = `${state.humanCount || 0}/16 players`;
 
@@ -810,6 +1256,9 @@
         hasDied = false;
         deadOverlay.classList.remove("visible");
       }
+      const sprintReady = Boolean(mySnake && mySnake.alive && state.phase === "running" && Number(mySnake.length || 0) > 5);
+      sprintButton.disabled = !sprintReady;
+      sprintButton.classList.toggle("ready", sprintReady);
 
       updateScoreboard(state.scoreboard || []);
     }
@@ -937,15 +1386,47 @@
       ctx.lineTo(last.x, last.y);
     }
 
+    function invertHexColor(color) {
+      let hex = String(color || "").trim();
+      if (/^#[0-9a-f]{3}$/i.test(hex)) {
+        hex = `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`;
+      }
+      if (!/^#[0-9a-f]{6}$/i.test(hex)) return "#ffffff";
+      const r = 255 - parseInt(hex.slice(1, 3), 16);
+      const g = 255 - parseInt(hex.slice(3, 5), 16);
+      const b = 255 - parseInt(hex.slice(5, 7), 16);
+      return `#${[r, g, b].map((n) => n.toString(16).padStart(2, "0")).join("")}`;
+    }
+
+    function identityPulseStyle(baseColor) {
+      const now = performance.now();
+      if (now >= identityPulseUntil) return null;
+      const age = now - identityPulseStartedAt;
+      const blinkOn = Math.floor(age / 85) % 2 === 0;
+      const rainbow = `hsl(${Math.floor(age * 0.72) % 360} 100% 66%)`;
+      const wave = 0.5 + Math.sin(age / 85) * 0.5;
+      return {
+        stroke: blinkOn ? invertHexColor(baseColor) : baseColor,
+        glow: blinkOn ? "#ffffff" : rainbow,
+        highlight: blinkOn ? "#ffffff" : rainbow,
+        blur: cellSize * (1.25 + wave * 1.25),
+      };
+    }
+
     function drawSnake(snake) {
       const body = snake.body || [];
       if (!body.length) return;
       const isMe = snake.id === playerId;
       const head = cellCenter(body[0]);
       const color = snake.color || "#ffffff";
+      const pulse = isMe ? identityPulseStyle(color) : null;
+      const snakeColor = pulse ? pulse.stroke : color;
       ctx.save();
 
-      if (snake.leader) {
+      if (pulse) {
+        ctx.shadowBlur = pulse.blur;
+        ctx.shadowColor = pulse.glow;
+      } else if (snake.leader) {
         ctx.shadowBlur = cellSize * 1.2;
         ctx.shadowColor = "#ffd166";
       } else {
@@ -957,17 +1438,18 @@
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
       ctx.lineWidth = Math.max(8, cellSize * 0.82);
-      ctx.strokeStyle = color;
+      ctx.strokeStyle = snakeColor;
       drawSmoothPath(body);
-      if (body.length === 1) ctx.fillStyle = color;
+      if (body.length === 1) ctx.fillStyle = snakeColor;
       if (body.length === 1) ctx.fill();
       else ctx.stroke();
 
       // Inner highlight makes the snake look like a glossy noodle.
-      ctx.shadowBlur = 0;
+      ctx.shadowBlur = pulse ? cellSize * 0.75 : 0;
+      ctx.shadowColor = pulse ? pulse.glow : "transparent";
       ctx.globalAlpha = snake.alive ? 0.55 : 0.18;
       ctx.lineWidth = Math.max(3, cellSize * 0.26);
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.55)";
+      ctx.strokeStyle = pulse ? pulse.highlight : "rgba(255, 255, 255, 0.55)";
       if (body.length > 1) {
         drawSmoothPath(body.slice(0, Math.max(2, Math.ceil(body.length * 0.65))));
         ctx.stroke();
@@ -1080,6 +1562,15 @@
       send({ type: "input", dir, seq: inputSeq, clientTime: Date.now() }, true);
     }
 
+    function requestSprint() {
+      if (!connected || hasDied || !playerId) return;
+      sprintSeq += 1;
+      send({ type: "sprint", seq: sprintSeq, dir: currentDir, clientTime: Date.now() }, true);
+      sprintButton.classList.remove("fired");
+      void sprintButton.offsetWidth;
+      sprintButton.classList.add("fired");
+    }
+
     function keyToDir(key) {
       switch (key) {
         case "ArrowUp": case "w": case "W": return "up";
@@ -1118,6 +1609,11 @@
 
     document.addEventListener("keydown", (event) => {
       if (event.target && ["INPUT", "TEXTAREA"].includes(event.target.tagName)) return;
+      if ((event.code === "Space" || event.key === " ") && !event.repeat) {
+        event.preventDefault();
+        requestSprint();
+        return;
+      }
       const dir = keyToDir(event.key);
       if (dir) {
         event.preventDefault();
@@ -1129,18 +1625,30 @@
       button.addEventListener("click", () => changeDirection(button.dataset.dir));
     });
 
+    sprintButton.addEventListener("click", requestSprint);
+    sprintButton.addEventListener("touchstart", (event) => { event.preventDefault(); requestSprint(); }, { passive: false });
+    mobileChatToggle.addEventListener("click", () => setMobileChatOpen(!mobileChatOpen));
+
     gameIdInput.addEventListener("input", () => { gameIdInput.value = gameIdInput.value.toUpperCase().replace(/[^A-Z0-9]/g, ""); });
     nicknameInput.addEventListener("input", () => { nicknameInput.value = nicknameInput.value.replace(/[^A-Za-z0-9]/g, ""); });
 
+    $("leaveGame").addEventListener("click", leaveCurrentGame);
     $("copyGameId").addEventListener("click", () => { if (gameId) copyText(gameId); });
     $("modalCopy").addEventListener("click", () => { if (gameId) copyText(gameId); });
     $("modalClose").addEventListener("click", closeModal);
+
     gameIdModal.addEventListener("click", (event) => { if (event.target === gameIdModal) closeModal(); });
-    window.addEventListener("resize", resizeCanvas);
+    window.addEventListener("resize", () => { resizeCanvas(); updateOrientationClass(); });
+    window.addEventListener("orientationchange", () => setTimeout(updateOrientationClass, 120));
 
     nicknameInput.value = randomNickname();
+    $("meaningfultips").innerText = randomTip();
+
+    initMobileControls();
     resizeCanvas();
+    updateMobileChatMarker();
     requestAnimationFrame(render);
+
   </script>
 </body>
 </html>

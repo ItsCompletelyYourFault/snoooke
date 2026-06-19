@@ -28,6 +28,15 @@ The server creates a new game with a 30 second warm-up countdown and returns a G
 
 If the Game-ID is invalid, expired or full without kickable bots, the server returns an error.
 
+
+### Leave Game
+
+```json
+{"type":"leave_game"}
+```
+
+The server removes the player from the current game and keeps the WebSocket usable for a future join/create request if the client does not close it.
+
 ### Direction input
 
 ```json
@@ -35,6 +44,14 @@ If the Game-ID is invalid, expired or full without kickable bots, the server ret
 ```
 
 Allowed directions: `up`, `down`, `left`, `right`.
+
+### Sprint
+
+```json
+{"type":"sprint","seq":7,"dir":"left","clientTime":1780000000000}
+```
+
+Sprint is a one-shot request. The server accepts it only for living human players in a running game with length greater than 5. On the next tick, the snake spends 2 length, advances 4 cells in its current server-authoritative direction, and drops 1 food at its tail. The `dir` field is accepted as client telemetry only; the server does not trust it for physics.
 
 ### Telemetry
 
@@ -49,7 +66,7 @@ Allowed directions: `up`, `down`, `left`, `right`.
 }
 ```
 
-The server stores telemetry for observation and possible anti-cheat analysis. It does not use telemetry for authoritative game physics.
+The server stores telemetry for observation and possible anti-cheat analysis. It does not use telemetry for authoritative game physics, movement distance or sprint validation.
 
 ### Chat
 
@@ -136,6 +153,15 @@ Reasons include `wall`, `self`, `body` and `head`.
 ```
 
 The game remains usable; this is a live high-score arena rather than a hard-ended match.
+
+Death-food drops are represented as ordinary `food` cells in later state snapshots.
+
+
+### Left game
+
+```json
+{"type":"left_game","message":"You left the game."}
+```
 
 ### Error
 

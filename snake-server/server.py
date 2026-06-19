@@ -49,8 +49,15 @@ FOOD_ADJUST_PERIOD = 1.20
 BOT_RESPAWN_DELAY = 2.0
 GAME_EMPTY_TTL = 60.0
 
+SPRINT_COST = 2
+SPRINT_STEPS = 4
+BOT_FLOOD_LIMIT = 180
+SPAWN_MIN_WALL_DISTANCE = 4
+SPAWN_MIN_SNAKE_DISTANCE = 5
+
 CHAT_MAX_LENGTH = 255
 CHAT_HISTORY_LIMIT = 40
+CHAT_SECONDS_LIMIT = 20
 STATE_SEND_LIMIT_HZ = 30.0
 
 DIRS: dict[str, tuple[int, int]] = {
@@ -67,8 +74,13 @@ COLORS = [
     "#f72585", "#4cc9f0", "#b5179e", "#80ed99", "#ff9770", "#cdb4db",
 ]
 BOT_NAMES = [
-    "BotBento", "SirNoodle", "ByteBoa", "MunchAI", "WiggleBot", "PastaBot",
-    "Sneki", "NoodleOS", "SnackGPT", "CurlBot", "ZigZag", "PixelPython",
+    "BotBento", "ByteBoa", "BoaBot", "WiggleBot", "PastaBot", "NoodleOS",
+    "SnackGPT", "CurlBot", "PixelPython", "HissGPT", "SnekAI",
+    "CoilPilotAI", "FangBot", "ViperGPT", "SlitherBot", "RattleBotGPT",
+    "BoaByteBot", "NoodleGPT", "VenomAI", "HissistantAI", "Botaconda",
+    "PythonGPT", "ScaleBot", "CurlGPT", "SnackOverflowAI", "SssiriBot",
+    "AutoHissGPT", "PromptPython", "ByteMeBoaBot", "SnektronAI",
+    "CoilCompilerBot", "DebuggerBoaGPT",
 ]
 
 
@@ -112,6 +124,7 @@ class ClientConn:
     ws: ServerConnection
     conn_id: str = field(default_factory=lambda: random_id("c_"))
     nickname: str = ""
+    last_chat_time: int = 0
     game_id: Optional[str] = None
     snake_id: Optional[str] = None
     control_queue: asyncio.Queue[str] = field(default_factory=lambda: asyncio.Queue(maxsize=64))
@@ -177,6 +190,8 @@ class Snake:
     alive: bool = True
     grow: int = 0
     last_input_seq: int = 0
+    pending_sprint: bool = False
+    last_sprint_seq: int = 0
     death_reason: str = ""
     killed_by: Optional[str] = None
     joined_at: float = field(default_factory=mono)
@@ -263,32 +278,80 @@ class Game:
         return cells
 
     def _find_spawn_cell(self) -> Optional[tuple[int, int]]:
-        occupied = self._occupied_cells(include_dead=False)
-        for _ in range(500):
-            x = random.randint(3, GRID_W - 4)
-            y = random.randint(3, GRID_H - 4)
-            cell = (x, y)
+        # Prefer cells with meaningful distance from walls and every visible snake body.
+        # This avoids the frustrating instant-death spawn that can happen in busy arenas.
+        occupied = self._occupied_cells(include_dead=True)
+        snake_cells: set[tuple[int, int]] = set()
+        for snake in self.snakes.values():
+            snake_cells.update(snake.body)
+
+        def local_space(cell: tuple[int, int], radius: int = 3) -> int:
+            cx, cy = cell
+            free = 0
+            for y in range(cy - radius, cy + radius + 1):
+                for x in range(cx - radius, cx + radius + 1):
+                    if 0 <= x < GRID_W and 0 <= y < GRID_H and (x, y) not in occupied:
+                        free += 1
+            return free
+
+        def score(cell: tuple[int, int], strict: bool) -> Optional[int]:
+            x, y = cell
             if cell in occupied:
-                continue
-            # Leave a small comfort bubble so new snakes do not appear inside chaos.
-            too_close = False
-            for ox, oy in occupied:
-                if abs(ox - x) <= 2 and abs(oy - y) <= 2:
-                    too_close = True
-                    break
-            if not too_close:
-                return cell
+                return None
+            wall_distance = min(x, GRID_W - 1 - x, y, GRID_H - 1 - y)
+            if strict and wall_distance < SPAWN_MIN_WALL_DISTANCE:
+                return None
+            if snake_cells:
+                snake_distance = min(abs(x - sx) + abs(y - sy) for sx, sy in snake_cells)
+            else:
+                snake_distance = GRID_W + GRID_H
+            if strict and snake_distance < SPAWN_MIN_SNAKE_DISTANCE:
+                return None
+            center_bonus = GRID_W + GRID_H - (abs(x - GRID_W // 2) + abs(y - GRID_H // 2))
+            return wall_distance * 10 + min(snake_distance, 18) * 12 + local_space(cell) + center_bonus // 6
+
+        candidates: list[tuple[int, tuple[int, int]]] = []
+        for _ in range(900):
+            cell = (random.randint(1, GRID_W - 2), random.randint(1, GRID_H - 2))
+            value = score(cell, strict=True)
+            if value is not None:
+                candidates.append((value, cell))
+        if candidates:
+            candidates.sort(reverse=True)
+            elite = candidates[: min(12, len(candidates))]
+            return random.choice(elite)[1]
+
+        # Crowded fallback: still choose the safest available non-wall cell.
+        fallback: list[tuple[int, tuple[int, int]]] = []
         for y in range(1, GRID_H - 1):
             for x in range(1, GRID_W - 1):
-                if (x, y) not in occupied:
-                    return (x, y)
-        return None
+                value = score((x, y), strict=False)
+                if value is not None:
+                    fallback.append((value, (x, y)))
+        if not fallback:
+            return None
+        fallback.sort(reverse=True)
+        return fallback[0][1]
+
+    def _choose_spawn_direction(self, cell: tuple[int, int]) -> str:
+        occupied = self._occupied_cells(include_dead=True)
+        ranked: list[tuple[int, str]] = []
+        for direction, (dx, dy) in DIRS.items():
+            score = 0
+            for step in range(1, 7):
+                nxt = (cell[0] + dx * step, cell[1] + dy * step)
+                if not (0 <= nxt[0] < GRID_W and 0 <= nxt[1] < GRID_H) or nxt in occupied:
+                    score -= 1000 // step
+                    break
+                score += 10
+            ranked.append((score + random.randrange(0, 3), direction))
+        return max(ranked)[1]
 
     def _make_snake(self, nickname: str, bot: bool, client: Optional[ClientConn]) -> Optional[Snake]:
         cell = self._find_spawn_cell()
         if cell is None:
             return None
-        direction = random.choice(list(DIRS.keys()))
+        direction = self._choose_spawn_direction(cell)
         snake = Snake(
             snake_id=random_id("s_"),
             nickname=nickname,
@@ -362,6 +425,23 @@ class Game:
             if OPPOSITE.get(direction) != snake.direction:
                 snake.pending_direction = direction
 
+    async def receive_sprint(self, client: ClientConn, payload: dict[str, Any]) -> None:
+        # Sprint is a one-shot request. The server validates it at receive time and
+        # consumes it on the next game tick. Clients cannot force movement distance.
+        seq = clamp_int(payload.get("seq"), 0, 2_147_483_647)
+        async with self.lock:
+            snake = self.snakes.get(client.snake_id or "")
+            if snake is None or not snake.alive or snake.bot or self.phase != "running":
+                return
+            if seq < snake.last_sprint_seq:
+                return
+            snake.last_sprint_seq = seq
+            if snake.pending_sprint:
+                return
+            if snake.length <= 5:
+                return
+            snake.pending_sprint = True
+
     async def receive_telemetry(self, client: ClientConn, payload: dict[str, Any]) -> None:
         # Stored for observability and anti-cheat analysis. Not used for physics.
         segments = payload.get("segments", [])
@@ -379,9 +459,16 @@ class Game:
 
     async def receive_chat(self, client: ClientConn, payload: dict[str, Any]) -> None:
         text = sanitize_chat(payload.get("text"))
+        now : int= int(time.time())
+
         if not (1 <= len(text) <= CHAT_MAX_LENGTH):
             client.send_control({"type": "error", "code": "CHAT_INVALID", "message": "Chat message must be 1-255 characters."})
             return
+
+        if client.last_chat_time+CHAT_HISTORY_LIMIT > now:
+            print(f"Ignoring chat message from {client.nickname} for flood ...", flush=True)
+            return
+
         async with self.lock:
             if client.conn_id not in self.players:
                 return
@@ -395,6 +482,7 @@ class Game:
             self.chat_history.append(message)
             self.chat_history = self.chat_history[-CHAT_HISTORY_LIMIT:]
             self.broadcast_control(message)
+            client.last_chat_time = now
 
     def _add_system_chat(self, text: str) -> None:
         message = {"type": "chat", "kind": "system", "from": "server", "text": text, "time": unix_ms()}
@@ -425,11 +513,13 @@ class Game:
     def _level_targets(self) -> tuple[str, float, int]:
         leader = self.leader()
         leader_points = leader.length if leader is not None else 1
-        if leader_points < 10:
+        if leader_points < 5:
             return "Chicken", CHICKEN_TICK_HZ, 5
-        if leader_points <= 40:
-            return "Normal", NORMAL_TICK_HZ, 3
-        return "Noodle", NOODLE_TICK_HZ, 1
+        if leader_points <= 15:
+            return "Noodle", NORMAL_TICK_HZ, 3
+        if leader_points <= 45:
+            return "Ramen", NORMAL_TICK_HZ, 2
+        return "Nani?!", NOODLE_TICK_HZ, 1
 
     def _update_level_progression(self) -> None:
         new_level, target_hz, target_food = self._level_targets()
@@ -446,6 +536,9 @@ class Game:
             return
         self.last_food_adjust = now
 
+        # Level rules define the minimum amount of ambient food. Bonus food from
+        # sprint/death drops is intentionally not pruned here, so special drops
+        # stay on the board until somebody eats them.
         occupied = self._occupied_cells(include_dead=False)
         attempts = 0
         while len(self.food) < self.target_food_count and attempts < 1000:
@@ -455,43 +548,157 @@ class Game:
                 self.food.add(cell)
                 occupied.add(cell)
 
-        if len(self.food) > self.target_food_count:
-            remove_count = len(self.food) - self.target_food_count
+        # Sprint drops intentionally allow temporary extra food above the level target.
+        # Treat the level's food count as the minimum baseline, and trim only extreme
+        # excess so sprint-heavy games cannot grow food forever.
+        max_food = self.target_food_count + MAX_ACTIVE_SNAKES * 2
+        if len(self.food) > max_food:
+            remove_count = len(self.food) - max_food
             for cell in random.sample(list(self.food), remove_count):
                 self.food.remove(cell)
 
-    def _choose_bot_direction(self, snake: Snake) -> str:
-        head = snake.head
-        occupied: set[tuple[int, int]] = set()
+    def _scatter_death_food(self, origin: tuple[int, int], old_length: int) -> int:
+        if old_length <= 5:
+            return 0
+
+        min_drops = max(1, math.floor(old_length * 0.10))
+        max_drops = max(min_drops, math.ceil(old_length * 0.30))
+        drop_count = random.randint(min_drops, max_drops)
+
+        cx = min(max(origin[0], 1), GRID_W - 2)
+        cy = min(max(origin[1], 1), GRID_H - 2)
+        blocked = self._occupied_cells(include_dead=False)
+
+        candidates: list[tuple[int, int]] = []
+        for radius in range(0, 8):
+            ring: list[tuple[int, int]] = []
+            for dx in range(-radius, radius + 1):
+                for dy in range(-radius, radius + 1):
+                    if max(abs(dx), abs(dy)) != radius:
+                        continue
+                    cell = (cx + dx, cy + dy)
+                    if not (1 <= cell[0] <= GRID_W - 2 and 1 <= cell[1] <= GRID_H - 2):
+                        continue
+                    if cell in blocked or cell in candidates:
+                        continue
+                    ring.append(cell)
+            random.shuffle(ring)
+            candidates.extend(ring)
+            if len(candidates) >= drop_count:
+                break
+
+        spawned = 0
+        for cell in candidates[:drop_count]:
+            self.food.add(cell)
+            blocked.add(cell)
+            spawned += 1
+        return spawned
+
+    def _bot_blocked_cells(self, snake: Snake) -> set[tuple[int, int]]:
+        blocked: set[tuple[int, int]] = set()
         for other in self.snakes.values():
             if not other.alive:
                 continue
-            # Allow bot to move into its own tail if that tail will probably leave.
             body = list(other.body)
             if other.snake_id == snake.snake_id and len(body) > 1:
+                # The bot can usually move into its own tail because the tail will move.
                 body = body[:-1]
-            occupied.update(body)
+            blocked.update(body)
+        return blocked
 
-        def safe_score(direction: str) -> tuple[int, float]:
+    def _bot_danger_cells(self, snake: Snake) -> set[tuple[int, int]]:
+        danger: set[tuple[int, int]] = set()
+        for other in self.snakes.values():
+            if not other.alive or other.snake_id == snake.snake_id:
+                continue
+            for direction, (dx, dy) in DIRS.items():
+                if OPPOSITE.get(direction) == other.direction:
+                    continue
+                cell = (other.head[0] + dx, other.head[1] + dy)
+                if 0 <= cell[0] < GRID_W and 0 <= cell[1] < GRID_H:
+                    danger.add(cell)
+        return danger
+
+    def _flood_fill_area(self, start: tuple[int, int], blocked: set[tuple[int, int]], limit: int = BOT_FLOOD_LIMIT) -> int:
+        if start in blocked or not (0 <= start[0] < GRID_W and 0 <= start[1] < GRID_H):
+            return 0
+        seen = {start}
+        queue: Deque[tuple[int, int]] = deque([start])
+        while queue and len(seen) < limit:
+            x, y = queue.popleft()
+            for dx, dy in DIRS.values():
+                nxt = (x + dx, y + dy)
+                if not (0 <= nxt[0] < GRID_W and 0 <= nxt[1] < GRID_H):
+                    continue
+                if nxt in seen or nxt in blocked:
+                    continue
+                seen.add(nxt)
+                queue.append(nxt)
+        return len(seen)
+
+    def _path_to_nearest_food(
+        self,
+        snake: Snake,
+        blocked: set[tuple[int, int]],
+        danger: set[tuple[int, int]],
+    ) -> Optional[str]:
+        if not self.food:
+            return None
+        start = snake.head
+        queue: Deque[tuple[tuple[int, int], Optional[str]]] = deque([(start, None)])
+        seen = {start}
+        while queue and len(seen) < GRID_W * GRID_H:
+            cell, first_dir = queue.popleft()
+            if cell in self.food and first_dir is not None:
+                return first_dir
+            for direction, (dx, dy) in DIRS.items():
+                if first_dir is None and OPPOSITE.get(direction) == snake.direction:
+                    continue
+                nxt = (cell[0] + dx, cell[1] + dy)
+                if not (0 <= nxt[0] < GRID_W and 0 <= nxt[1] < GRID_H):
+                    continue
+                if nxt in seen or nxt in blocked:
+                    continue
+                # Avoid possible head-on cells unless this cell contains food and no alternative
+                # has been found yet. It keeps bots aggressive but not suicidal.
+                if nxt in danger and nxt not in self.food:
+                    continue
+                seen.add(nxt)
+                queue.append((nxt, first_dir or direction))
+        return None
+
+    def _choose_bot_direction(self, snake: Snake) -> str:
+        head = snake.head
+        blocked = self._bot_blocked_cells(snake)
+        danger = self._bot_danger_cells(snake)
+        food_dir = self._path_to_nearest_food(snake, blocked, danger)
+
+        def candidate_score(direction: str) -> tuple[float, float]:
             if OPPOSITE.get(direction) == snake.direction:
-                return (-100000, random.random())
+                return (-1_000_000.0, random.random())
             dx, dy = DIRS[direction]
             nxt = (head[0] + dx, head[1] + dy)
             if not (0 <= nxt[0] < GRID_W and 0 <= nxt[1] < GRID_H):
-                return (-10000, random.random())
-            if nxt in occupied:
-                return (-9000, random.random())
-            wall_distance = min(nxt[0], GRID_W - 1 - nxt[0], nxt[1], GRID_H - 1 - nxt[1])
-            if self.food:
-                food_distance = min(abs(nxt[0] - fx) + abs(nxt[1] - fy) for fx, fy in self.food)
-            else:
-                food_distance = GRID_W + GRID_H
-            jitter = random.random()
-            return (wall_distance * 2 - food_distance, jitter)
+                return (-900_000.0, random.random())
+            if nxt in blocked:
+                return (-800_000.0, random.random())
 
-        ranked = sorted(DIRS.keys(), key=safe_score, reverse=True)
-        # Add a little personality; bots are not perfect.
-        if len(ranked) > 1 and random.random() < 0.12:
+            reachable = self._flood_fill_area(nxt, blocked)
+            wall_distance = min(nxt[0], GRID_W - 1 - nxt[0], nxt[1], GRID_H - 1 - nxt[1])
+            food_distance = min((abs(nxt[0] - fx) + abs(nxt[1] - fy) for fx, fy in self.food), default=GRID_W + GRID_H)
+            score = reachable * 3.5 + wall_distance * 4.0 - food_distance * 2.2
+            if direction == food_dir:
+                score += 220
+            if nxt in danger:
+                score -= 180
+            # Longer bots become more conservative about cramped spaces.
+            if reachable < max(10, snake.length * 2):
+                score -= 120
+            return (score, random.random())
+
+        ranked = sorted(DIRS.keys(), key=candidate_score, reverse=True)
+        # Small randomness keeps bots from forming deterministic traffic jams.
+        if len(ranked) > 1 and random.random() < 0.04:
             return ranked[1]
         return ranked[0]
 
@@ -499,6 +706,7 @@ class Game:
         for snake in self.snakes.values():
             if snake.bot and snake.alive:
                 snake.pending_direction = self._choose_bot_direction(snake)
+                snake.pending_sprint = False
 
     def _spawn_bot(self) -> bool:
         if self.active_count() >= MAX_ACTIVE_SNAKES:
@@ -520,6 +728,26 @@ class Game:
                 break
             alive_bots = [s for s in self.snakes.values() if s.bot and s.alive]
 
+    def _add_food_near(self, desired: tuple[int, int], occupied: set[tuple[int, int]]) -> bool:
+        candidates = [desired]
+        for radius in range(1, 5):
+            ring: list[tuple[int, int]] = []
+            for dx in range(-radius, radius + 1):
+                dy = radius - abs(dx)
+                ring.append((desired[0] + dx, desired[1] + dy))
+                if dy:
+                    ring.append((desired[0] + dx, desired[1] - dy))
+            random.shuffle(ring)
+            candidates.extend(ring)
+        for cell in candidates:
+            if not (0 <= cell[0] < GRID_W and 0 <= cell[1] < GRID_H):
+                continue
+            if cell in occupied or cell in self.food:
+                continue
+            self.food.add(cell)
+            return True
+        return False
+
     def _step_snakes(self) -> None:
         alive = [s for s in self.snakes.values() if s.alive]
         if not alive:
@@ -527,22 +755,51 @@ class Game:
 
         old_heads = {s.snake_id: s.head for s in alive}
         old_lengths = {s.snake_id: s.length for s in alive}
+        paths: dict[str, list[tuple[int, int]]] = {}
+        sprint_used: dict[str, bool] = {}
+        sprint_drop_cells: list[tuple[int, int]] = []
+        food_on_path: dict[str, set[tuple[int, int]]] = {}
         new_heads: dict[str, tuple[int, int]] = {}
         will_eat: dict[str, bool] = {}
 
         for snake in alive:
             if snake.pending_direction in DIRS and OPPOSITE.get(snake.pending_direction) != snake.direction:
                 snake.direction = snake.pending_direction
+
+            use_sprint = bool(snake.pending_sprint and not snake.bot and snake.length > 5)
+            snake.pending_sprint = False
+            sprint_used[snake.snake_id] = use_sprint
+            if use_sprint and snake.body:
+                sprint_drop_cells.append(snake.body[-1])
+
+            steps = SPRINT_STEPS if use_sprint else 1
             dx, dy = DIRS[snake.direction]
             new_head = (snake.head[0] + dx, snake.head[1] + dy)
             new_heads[snake.snake_id] = new_head
             will_eat[snake.snake_id] = new_head in self.food
 
+            cx, cy = snake.head
+            path: list[tuple[int, int]] = []
+            for _ in range(steps):
+                cx += dx
+                cy += dy
+                path.append((cx, cy))
+            paths[snake.snake_id] = path
+            food_on_path[snake.snake_id] = {cell for cell in path if cell in self.food}
+
+        # Body cells that are expected to remain occupied through this tick.
         body_owners: dict[tuple[int, int], str] = {}
         for snake in alive:
             body = list(snake.body)
             # Body collision excludes the old head; head-to-head and cross-swap are handled separately.
             body_without_head = body[1:]
+
+            steps = len(paths[snake.snake_id])
+            sprint_cost = SPRINT_COST if sprint_used.get(snake.snake_id, False) else 0
+            predicted_growth = min(steps, snake.grow + len(food_on_path.get(snake.snake_id, set())))
+            cells_vacating = max(0, steps + sprint_cost - predicted_growth)
+            if cells_vacating > 0:
+                body_without_head = body_without_head[: max(0, len(body_without_head) - cells_vacating)]
             if body_without_head and not will_eat.get(snake.snake_id, False):
                 body_without_head = body_without_head[:-1]
             for cell in body_without_head:
@@ -551,33 +808,37 @@ class Game:
         dead: dict[str, tuple[str, Optional[str]]] = {}
 
         for snake in alive:
-            head = new_heads[snake.snake_id]
-            if not (0 <= head[0] < GRID_W and 0 <= head[1] < GRID_H):
-                dead[snake.snake_id] = ("wall", None)
-                continue
-            owner_id = body_owners.get(head)
-            if owner_id is not None:
-                if owner_id == snake.snake_id:
-                    dead[snake.snake_id] = ("self", None)
-                else:
-                    # self._add_system_chat(f"{nickname} joined the game.")
-                    dead[snake.snake_id] = ("body", owner_id)
+            for head in paths[snake.snake_id]:
+                if not (0 <= head[0] < GRID_W and 0 <= head[1] < GRID_H):
+                    dead.setdefault(snake.snake_id, ("wall", None))
+                    break
+                owner_id = body_owners.get(head)
+                if owner_id is not None:
+                    if owner_id == snake.snake_id:
+                        dead.setdefault(snake.snake_id, ("self", None))
+                    else:
+                        dead.setdefault(snake.snake_id, ("body", owner_id))
+                    break
 
-        heads_to_snakes: dict[tuple[int, int], list[str]] = {}
-        for snake_id, head in new_heads.items():
-            heads_to_snakes.setdefault(head, []).append(snake_id)
-        for snake_ids in heads_to_snakes.values():
-            if len(snake_ids) > 1:
-                for snake_id in snake_ids:
-                    dead[snake_id] = ("head", None)
+        final_heads = {snake_id: path[-1] for snake_id, path in paths.items()}
 
-        # Cross-swap: two snakes pass through each other head-on between cells.
+        # Head collisions, including sprint paths that hit a head after another snake's
+        # shorter movement has already stopped for this tick.
         ids = [s.snake_id for s in alive]
         for i, a_id in enumerate(ids):
             for b_id in ids[i + 1:]:
-                if new_heads[a_id] == old_heads[b_id] and new_heads[b_id] == old_heads[a_id]:
-                    dead[a_id] = ("head", None)
-                    dead[b_id] = ("head", None)
+                a_path = paths[a_id]
+                b_path = paths[b_id]
+                max_steps = max(len(a_path), len(b_path))
+                for step in range(max_steps):
+                    a_pos = a_path[step] if step < len(a_path) else a_path[-1]
+                    b_pos = b_path[step] if step < len(b_path) else b_path[-1]
+                    a_prev = old_heads[a_id] if step == 0 else (a_path[step - 1] if step - 1 < len(a_path) else a_path[-1])
+                    b_prev = old_heads[b_id] if step == 0 else (b_path[step - 1] if step - 1 < len(b_path) else b_path[-1])
+                    if a_pos == b_pos or (a_pos == b_prev and b_pos == a_prev):
+                        dead.setdefault(a_id, ("head", None))
+                        dead.setdefault(b_id, ("head", None))
+                        break
 
         rewards: dict[str, int] = {}
         for dead_id, (reason, killer_id) in dead.items():
@@ -592,6 +853,7 @@ class Game:
                 snake.alive = False
                 snake.death_reason = reason
                 snake.killed_by = killer_id
+                self._scatter_death_food(new_heads.get(snake.snake_id, snake.head), old_lengths.get(snake.snake_id, snake.length))
                 if not snake.bot and snake.client is not None:
                     killer_name = None
                     if killer_id and killer_id in self.snakes:
@@ -606,16 +868,31 @@ class Game:
                 continue
 
             gained = 0
-            if will_eat[snake.snake_id] and new_heads[snake.snake_id] in self.food:
-                self.food.remove(new_heads[snake.snake_id])
-                gained += 1
+            for cell in paths[snake.snake_id]:
+                if cell in self.food:
+                    self.food.remove(cell)
+                    gained += 1
             gained += rewards.get(snake.snake_id, 0)
+
+            old_length = old_lengths[snake.snake_id]
+            sprint_cost = SPRINT_COST if sprint_used.get(snake.snake_id, False) else 0
+            base_target_length = max(1, old_length - sprint_cost)
             snake.grow += gained
-            snake.body.appendleft(new_heads[snake.snake_id])
-            if snake.grow > 0:
-                snake.grow -= 1
-            elif len(snake.body) > 1:
+
+            for cell in paths[snake.snake_id]:
+                snake.body.appendleft(cell)
+
+            realized_growth = min(len(paths[snake.snake_id]), snake.grow)
+            snake.grow -= realized_growth
+            target_length = max(1, base_target_length + realized_growth)
+            while len(snake.body) > target_length:
                 snake.body.pop()
+
+        occupied_after: set[tuple[int, int]] = set()
+        for snake in self.snakes.values():
+            occupied_after.update(snake.body)
+        for cell in sprint_drop_cells:
+            self._add_food_near(cell, occupied_after)
 
         bot_died = any(self.snakes[snake_id].bot for snake_id in dead if snake_id in self.snakes)
 
@@ -858,6 +1135,15 @@ async def handle_message(client: ClientConn, raw: str) -> None:
             await manager.join_game(client, nickname, str(payload.get("gameId", "")))
         return
 
+    if msg_type == "leave_game":
+        if client.game_id is not None:
+            async with manager.lock:
+                game = manager.games.get(client.game_id)
+            if game is not None:
+                await game.remove_human(client)
+        client.send_control({"type": "left_game", "message": "You left the game."})
+        return
+
     if client.game_id is None:
         client.send_control({"type": "error", "code": "NOT_IN_GAME", "message": "Join or create a game first."})
         return
@@ -870,6 +1156,8 @@ async def handle_message(client: ClientConn, raw: str) -> None:
 
     if msg_type == "input":
         await game.receive_input(client, payload)
+    elif msg_type == "sprint":
+        await game.receive_sprint(client, payload)
     elif msg_type == "telemetry":
         await game.receive_telemetry(client, payload)
     elif msg_type == "chat":

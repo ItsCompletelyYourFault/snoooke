@@ -24,6 +24,7 @@ run. Please don't run server.py anywhere near a production environment.
 - Nicknames: 5-15 characters, A-Z, a-z, and 0–9. The default/random nickname is chosen from a silly snake-name list and filtered to valid names.
 - Per-game chatroom with 1–255 character messages; the chat panel has a fixed height and scrolls.
 - Live top 3 scoreboard.
+- Volatile server-runtime all-time highscore board for the biggest human noodles, shown on the landing page.
 - Up to 16 human players per game.
 - If an active game is full and has bots, the lowest-ranked bot is kicked for a human player.
 - Three level states based on the current leader's length:
@@ -40,6 +41,7 @@ run. Please don't run server.py anywhere near a production environment.
 - The leader has a crown and a golden glow in the browser.
 - Your own snake pulses and rapidly blinks between its assigned color and the inverse color for 5 seconds when play starts.
 - The game top bar includes a Leave Game button so players can return to the landing screen and start/join another game.
+- Dead players can rejoin the same still-running game after a 5 second cooldown using the Rejoin button.
 - Clients send direction and coordinate telemetry as often as the render loop allows, while avoiding WebSocket backpressure.
 - Sprint: human players with length > 5 can press Space to spend 2 length, move 4 cells in the current direction on the next server tick, and drop 1 food at the tail.
 - Smarter bots path toward food with BFS-style route finding, avoid likely head-on danger cells, and prefer open space.
@@ -83,6 +85,7 @@ Desktop:
 
 - Arrow keys or WASD to steer.
 - Space to sprint when your snake length is greater than 5.
+- The client now forces focus back to the canvas after joining, and stale focus in hidden landing inputs no longer eats movement keys.
 
 Mobile/touch devices:
 
@@ -149,8 +152,21 @@ The server collision map now predicts the snake bodies that remain after a tick 
 ## Testing
 ### Testing the collision model
 ```bash
-cd snake-server
 python3 -m py_compile server.py
 python3 test_server_collisions.py
 ```
-All Tests should return "PASS".
+Test collision model Head-To-Wall | Head-To-Head | Head-To-Body
+
+### Testing the volatile all-time highscore
+```bash
+python3 test_server_alltime.py
+```
+The all-time board is in memory only. Restarting `server.py` resets it.
+
+### Testing the browser keyboard controls
+```bash
+node test_index_keyboard.js
+```
+The keyboard test runs without external npm dependencies. It simulates a game join while the old Game-ID input still has focus, then verifies that a WASD key sends an input message instead of being ignored.
+
+

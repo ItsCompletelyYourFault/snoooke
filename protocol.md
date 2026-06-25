@@ -41,6 +41,18 @@ If the Game-ID is invalid, expired or full without kickable bots, the server ret
 
 The server removes the player from the current game and keeps the WebSocket usable for a future join/create request if the client does not close it.
 
+### Rejoin Game client flow
+
+There is no special server-side rejoin message. After a death and a 5 second client-side cooldown, the browser sends `leave_game`, waits for `left_game`, then sends `join_game` again with the same Game-ID and nickname. The new snake starts at length 1 through the existing join logic.
+
+### All-Time Highscore request
+
+```json
+{"type":"all_time_high"}
+```
+
+This request can be sent before joining a game. The returned board is volatile and exists only during the current `server.py` process lifetime.
+
 ### Direction input
 
 ```json
@@ -166,6 +178,20 @@ Death-food drops are represented as ordinary `food` cells in later state snapsho
 ```json
 {"type":"left_game","message":"You left the game."}
 ```
+
+### All-Time Highscore
+
+```json
+{
+  "type":"all_time_high",
+  "serverNow":1780000000000,
+  "scores":[
+    {"rank":1,"nickname":"NoodleNinja","length":42,"datetime":"2026-06-25T14:00:00Z"}
+  ]
+}
+```
+
+The server stores `nickname`, `length`, and UTC `datetime` for the top human-player scores in memory only.
 
 ### Error
 

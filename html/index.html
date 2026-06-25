@@ -182,6 +182,67 @@
 
     .join-box.visible { display: block; }
 
+    .all-time-card {
+      margin-top: 18px;
+      padding: 16px;
+      border-radius: 24px;
+      background: rgba(0, 0, 0, 0.18);
+      border: 1px solid var(--line);
+    }
+
+    .all-time-card h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      letter-spacing: -0.03em;
+    }
+
+    .all-time-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .all-time-row {
+      display: grid;
+      grid-template-columns: 34px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 9px 10px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.10);
+    }
+
+    .all-time-rank {
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      border-radius: 11px;
+      color: #080b18;
+      background: linear-gradient(135deg, #ffd166, #ffb703);
+      font-weight: 1000;
+    }
+
+    .all-time-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 900;
+    }
+
+    .all-time-score {
+      color: var(--gold);
+      font-weight: 1000;
+    }
+
+    .all-time-date {
+      grid-column: 2 / 4;
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: -4px;
+    }
+
     .hint, .error-line {
       min-height: 24px;
       margin-top: 12px;
@@ -245,6 +306,14 @@
       color: #fff;
       background: linear-gradient(135deg, rgba(255, 71, 126, 0.95), rgba(255, 92, 138, 0.78));
       border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .rejoin-button[hidden] { display: none !important; }
+
+    .rejoin-button {
+      color: #071513;
+      background: linear-gradient(135deg, #06d6a0, #80ed99);
+      border: 1px solid rgba(255, 255, 255, 0.18);
     }
 
     .pills {
@@ -883,6 +952,8 @@
     @media (max-width: 720px) {
       .app { padding: 12px; }
       .landing-card { padding: 22px; border-radius: 24px; }
+      .all-time-row { grid-template-columns: 30px 1fr auto; padding: 8px; }
+      .all-time-date { font-size: 11px; }
       .actions { grid-template-columns: 1fr; }
       .row { flex-direction: column; align-items: stretch; }
       .top-actions { width: 100%; }
@@ -922,6 +993,14 @@
 
         <div id="landingError" class="error-line"></div>
         <div class="hint">Tip: <span id="meaningfultips">Tell your friends in chat how much you appreciate them for being better.</span></div>
+
+        <section class="all-time-card" aria-label="All time highscore">
+          <h2>🍜 Noodly Hall of Snacklords</h2>
+          <div id="allTimeHighList" class="all-time-list">
+            <div class="mini-help">Loading legendary noodles...</div>
+          </div>
+        </section>
+
         <div class="git">Contact, use, share & contribute: <a href="https://github.com/ItsCompletelyYourFault/snoooke">github.com/snoooke</a></div>
       </div>
     </section>
@@ -937,12 +1016,13 @@
           </div>
           <div class="top-actions">
             <button id="leaveGame" class="danger" type="button">Leave Game</button>
+            <button id="rejoinGame" class="rejoin-button" type="button" hidden disabled>Rejoin</button>
             <button id="copyGameId" class="secondary" type="button">Copy Game-ID</button>
           </div>
         </div>
 
         <div class="game-card">
-          <canvas id="gameCanvas"></canvas>
+          <canvas id="gameCanvas" tabindex="0" aria-label="Snake game area"></canvas>
           <div id="warmupOverlay" class="overlay">
             <div>
               <div id="countdown" class="countdown">30</div>
@@ -1042,6 +1122,7 @@
     const chatLog = $("chatLog");
     const chatInput = $("chatInput");
     const scoreList = $("scoreList");
+    const allTimeHighList = $("allTimeHighList");
     const toastArea = $("toastArea");
     const gameIdModal = $("gameIdModal");
     const modalGameId = $("modalGameId");
@@ -1052,6 +1133,7 @@
     const mobileChatMarker = $("mobileChatMarker");
     const mobileScoreToggle = $("mobileScoreToggle");
     const scorePanel = document.querySelector(".panel");
+    const rejoinButton = $("rejoinGame");
 
     const isCoarseTouchDevice = Boolean(window.matchMedia && window.matchMedia("(pointer: coarse)").matches && navigator.maxTouchPoints > 0);
     const isMobileDevice = isCoarseTouchDevice || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
@@ -1083,6 +1165,13 @@
     let joystickManager = null;
     let joystickPointerId = null;
     let joystickAnchor = null;
+    let rejoinReadyAt = 0;
+    let rejoinTimer = null;
+    let rejoinPending = false;
+    let rejoinPendingGameId = null;
+    let rejoinPendingNickname = null;
+
+    const REJOIN_COOLDOWN_MS = 5000;
 
     const NICKNAME_POOL = [
       "SirHissALot", "SnekAndDestroy", "NoodleNinja", "VenomVroom",
@@ -1323,6 +1412,191 @@
       mobileChatMarker.classList.toggle("visible", isMobileDevice && unreadChatCount > 0);
     }
 
+    function clearRejoinCooldown() {
+      if (rejoinTimer) {
+        clearInterval(rejoinTimer);
+        rejoinTimer = null;
+      }
+      rejoinReadyAt = 0;
+    }
+
+    function hideRejoinButton() {
+      clearRejoinCooldown();
+      rejoinPending = false;
+      rejoinPendingGameId = null;
+      rejoinPendingNickname = null;
+      if (!rejoinButton) return;
+      rejoinButton.hidden = true;
+      rejoinButton.disabled = true;
+      rejoinButton.textContent = "Rejoin";
+    }
+
+    function updateRejoinButton() {
+      if (!rejoinButton || rejoinButton.hidden) return;
+      const remaining = Math.max(0, rejoinReadyAt - Date.now());
+      if (remaining > 0) {
+        rejoinButton.disabled = true;
+        rejoinButton.textContent = `Rejoin (${Math.ceil(remaining / 1000)}s)`;
+      } else {
+        clearRejoinCooldown();
+        rejoinButton.disabled = false;
+        rejoinButton.textContent = "Rejoin";
+      }
+    }
+
+    function startRejoinCooldown() {
+      if (!rejoinButton || !gameId) return;
+      rejoinButton.hidden = false;
+      rejoinReadyAt = Date.now() + REJOIN_COOLDOWN_MS;
+      updateRejoinButton();
+      if (rejoinTimer) clearInterval(rejoinTimer);
+      rejoinTimer = setInterval(updateRejoinButton, 120);
+    }
+
+    function prepareLocalRejoin() {
+      playerId = null;
+      latestState = null;
+      previousState = null;
+      hasDied = false;
+      currentDir = "right";
+      identityPulseStartedAt = 0;
+      identityPulseUntil = 0;
+      deadOverlay.classList.remove("visible");
+      warmupOverlay.classList.remove("visible");
+      hideRejoinButton();
+      focusGameControls();
+    }
+
+    function requestRejoin() {
+      if (!rejoinButton || rejoinButton.disabled || !gameId || !ws || ws.readyState !== WebSocket.OPEN) return;
+      const nickname = nicknameInput.value.trim();
+      if (!validateNickname(nickname)) {
+        showToast("Nickname must still be 5-15 letters/numbers before rejoining.");
+        return;
+      }
+      rejoinPending = true;
+      rejoinPendingGameId = gameId;
+      rejoinPendingNickname = nickname;
+      rejoinButton.disabled = true;
+      rejoinButton.textContent = "Rejoining...";
+      send({ type: "leave_game" }, true);
+    }
+
+    function formatAllTimeDate(value) {
+      if (!value) return "sometime in noodle history";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value);
+      return date.toLocaleString(undefined, {
+        year: "numeric", month: "short", day: "2-digit",
+        hour: "2-digit", minute: "2-digit",
+      });
+    }
+
+    function updateAllTimeHigh(scores) {
+      if (!allTimeHighList) return;
+      allTimeHighList.innerHTML = "";
+      if (!Array.isArray(scores) || scores.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "mini-help";
+        empty.textContent = "No snack legend yet. Become the first dangerously long noodle.";
+        allTimeHighList.appendChild(empty);
+        return;
+      }
+      scores.slice(0, 10).forEach((row, index) => {
+        const item = document.createElement("div");
+        item.className = "all-time-row";
+        const rank = document.createElement("div");
+        rank.className = "all-time-rank";
+        rank.textContent = index === 0 ? "👑" : `#${row.rank || index + 1}`;
+        const name = document.createElement("div");
+        name.className = "all-time-name";
+        name.textContent = row.nickname || "MysterySnek";
+        const score = document.createElement("div");
+        score.className = "all-time-score";
+        score.textContent = `${row.length || row.score || 0}m`;
+        const date = document.createElement("div");
+        date.className = "all-time-date";
+        date.textContent = formatAllTimeDate(row.datetime || row.time);
+        item.append(rank, name, score, date);
+        allTimeHighList.appendChild(item);
+      });
+    }
+
+    function loadAllTimeHigh() {
+      if (!allTimeHighList) return;
+      let scoreSocket;
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        try { scoreSocket?.close(); } catch (_) {}
+      };
+      try {
+        scoreSocket = new WebSocket(WS_URL);
+      } catch (_) {
+        updateAllTimeHigh([]);
+        return;
+      }
+      const timeout = setTimeout(() => {
+        if (!done) {
+          updateAllTimeHigh([]);
+          finish();
+        }
+      }, 2400);
+      scoreSocket.addEventListener("open", () => {
+        scoreSocket.send(JSON.stringify({ type: "all_time_high" }));
+      });
+      scoreSocket.addEventListener("message", (event) => {
+        let msg;
+        try { msg = JSON.parse(event.data); } catch (_) { return; }
+        if (msg.type === "all_time_high") {
+          clearTimeout(timeout);
+          updateAllTimeHigh(msg.scores || []);
+          finish();
+        }
+      });
+      scoreSocket.addEventListener("error", () => {
+        clearTimeout(timeout);
+        updateAllTimeHigh([]);
+        finish();
+      });
+    }
+
+    function isEditableTarget(target) {
+      if (!target) return false;
+      if (target.isContentEditable) return true;
+      return ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+    }
+
+    function gameControlsEnabled() {
+      return gameShell.classList.contains("visible") && !gameIdModal.classList.contains("visible");
+    }
+
+    function focusGameControls() {
+      const active = document.activeElement;
+      if (active && active !== document.body && active !== chatInput && typeof active.blur === "function") {
+        active.blur();
+      }
+      if (canvas && typeof canvas.focus === "function") {
+        try { canvas.focus({ preventScroll: true }); } catch (_) { canvas.focus(); }
+      }
+    }
+
+    function shouldIgnoreGameKey(event) {
+      if (!gameControlsEnabled()) return true;
+      const target = event.target || document.activeElement;
+      if (!isEditableTarget(target)) return false;
+      if (target === chatInput) return true;
+      // Landing inputs can remain focused after Join/Create/Just Play because they
+      // are hidden, not removed. Do not let that stale focus eat WASD/arrow keys.
+      if (landing.contains(target) || !gameShell.contains(target)) {
+        if (typeof target.blur === "function") target.blur();
+        focusGameControls();
+        return false;
+      }
+      return true;
+    }
+
     function startIdentityPulse() {
       identityPulseUntil = performance.now() + 5000;
     }
@@ -1394,6 +1668,10 @@
       unreadChatCount = 0;
       updateMobileChatMarker();
       setMobileChatOpen(false);
+      hideRejoinButton();
+      rejoinPending = false;
+      rejoinPendingGameId = null;
+      rejoinPendingNickname = null;
       manualLeave = false;
       chatLog.innerHTML = "";
       deadOverlay.classList.remove("visible");
@@ -1431,6 +1709,11 @@
     function handleServerMessage(msg) {
       if (!msg || typeof msg.type !== "string") return;
 
+      if (msg.type === "all_time_high") {
+        updateAllTimeHigh(msg.scores || []);
+        return;
+      }
+
       if (msg.type === "error") {
         const text = msg.message || "Server error.";
         if (!gameShell.classList.contains("visible")) setLandingError(text);
@@ -1461,6 +1744,8 @@
           showToast(`Joined game ${gameId}.`);
         }
         resizeCanvas();
+        requestAnimationFrame(focusGameControls);
+        setTimeout(focusGameControls, 120);
         return;
       }
 
@@ -1485,6 +1770,7 @@
         hasDied = true;
         deathText.textContent = msg.message || "Your snake died.";
         deadOverlay.classList.add("visible");
+        startRejoinCooldown();
         showToast(msg.message || "Your snake died.");
         return;
       }
@@ -1495,6 +1781,15 @@
       }
 
       if (msg.type === "left_game") {
+        if (rejoinPending && rejoinPendingGameId && rejoinPendingNickname && ws && ws.readyState === WebSocket.OPEN) {
+          const id = rejoinPendingGameId;
+          const nick = rejoinPendingNickname;
+          rejoinPending = false;
+          prepareLocalRejoin();
+          send({ type: "join_game", gameId: id, nickname: nick }, true);
+          showToast(`Rejoining game ${id}...`);
+          return;
+        }
         resetToLanding(msg.message || "You left the game.");
         return;
       }
@@ -1539,11 +1834,14 @@
       identityPulseStartedAt = 0;
       identityPulseUntil = 0;
       chatLog.innerHTML = "";
+      hideRejoinButton();
       setLandingError(message);
       resizeCanvas();
     }
 
     function leaveCurrentGame() {
+      rejoinPending = false;
+      hideRejoinButton();
       manualLeave = true;
       if (ws && ws.readyState === WebSocket.OPEN) {
         send({ type: "leave_game" }, true);
@@ -1602,6 +1900,8 @@
       if (mySnake && mySnake.alive && hasDied) {
         hasDied = false;
         deadOverlay.classList.remove("visible");
+        hideRejoinButton();
+        focusGameControls();
       }
       const sprintReady = Boolean(mySnake && mySnake.alive && state.phase === "running" && Number(mySnake.length || 0) > 5);
       sprintButton.disabled = !sprintReady;
@@ -1955,7 +2255,12 @@
     });
 
     document.addEventListener("keydown", (event) => {
-      if (event.target && ["INPUT", "TEXTAREA"].includes(event.target.tagName)) return;
+      if (event.key === "Escape" && isEditableTarget(document.activeElement) && document.activeElement !== nicknameInput && document.activeElement !== gameIdInput) {
+        document.activeElement.blur();
+        focusGameControls();
+        return;
+      }
+      if (shouldIgnoreGameKey(event)) return;
       if ((event.code === "Space" || event.key === " ") && !event.repeat) {
         event.preventDefault();
         requestSprint();
@@ -1981,9 +2286,14 @@
     nicknameInput.addEventListener("input", () => { nicknameInput.value = nicknameInput.value.replace(/[^A-Za-z0-9]/g, ""); });
 
     $("leaveGame").addEventListener("click", leaveCurrentGame);
+    rejoinButton.addEventListener("click", requestRejoin);
+    canvas.addEventListener("pointerdown", focusGameControls);
+    gameShell.addEventListener("pointerdown", (event) => {
+      if (!isEditableTarget(event.target)) focusGameControls();
+    });
     $("copyGameId").addEventListener("click", () => { if (gameId) copyText(gameId); });
     $("modalCopy").addEventListener("click", () => { if (gameId) copyText(gameId); });
-    $("modalClose").addEventListener("click", () => { closeModal(); requestMobileImmersion(); });
+    $("modalClose").addEventListener("click", () => { closeModal(); requestMobileImmersion(); focusGameControls(); });
 
     gameIdModal.addEventListener("click", (event) => { if (event.target === gameIdModal) closeModal(); });
     window.addEventListener("resize", () => { resizeCanvas(); updateOrientationClass(); });
@@ -1995,6 +2305,7 @@
     nicknameInput.value = randomNickname();
     $("meaningfultips").innerText = randomTip();
 
+    loadAllTimeHigh();
     initMobileControls();
     resizeCanvas();
     updateMobileChatMarker();

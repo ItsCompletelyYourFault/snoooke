@@ -23,6 +23,7 @@ import ssl
 import string
 import time
 from collections import deque
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Deque, Optional
@@ -68,6 +69,7 @@ CHAT_MAX_LENGTH = 255
 CHAT_HISTORY_LIMIT = 40
 CHAT_SECONDS_LIMIT = 20
 STATE_SEND_LIMIT_HZ = 30.0
+ALL_TIME_HIGH_LIMIT = 10
 
 DIRS: dict[str, tuple[int, int]] = {
     "up": (0, -1),
@@ -466,6 +468,7 @@ class Game:
             self.players[client.conn_id] = client
             client.nickname = nickname
             client.game_id = self.game_id
+            self.manager.record_all_time_high(nickname, snake.length)
             self._add_system_chat(f"{nickname} joined the game.")
             self._ensure_food(force=True)
             self._send_welcome(client, mode=mode)
@@ -970,6 +973,8 @@ class Game:
                 snake.alive = False
                 snake.death_reason = reason
                 snake.killed_by = killer_id
+                if not snake.bot:
+                    self.manager.record_all_time_high(snake.nickname, old_lengths.get(snake.snake_id, snake.length))
                 self._scatter_death_food(final_heads.get(snake.snake_id, snake.head), old_lengths.get(snake.snake_id, snake.length))
                 if not snake.bot and snake.client is not None:
                     killer_name = None
@@ -1004,6 +1009,8 @@ class Game:
             target_length = max(1, base_target_length + realized_growth)
             while len(snake.body) > target_length:
                 snake.body.pop()
+            if not snake.bot:
+                self.manager.record_all_time_high(snake.nickname, snake.length)
 
         occupied_after: set[tuple[int, int]] = set()
         for snake in self.snakes.values():
@@ -1146,6 +1153,47 @@ class GameManager:
     def __init__(self) -> None:
         self.games: dict[str, Game] = {}
         self.lock = asyncio.Lock()
+        self.all_time_high: list[dict[str, Any]] = []
+
+    def _highscore_timestamp(self) -> str:
+        return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+    def record_all_time_high(self, nickname: str, length: int) -> None:
+        """Store a volatile, runtime-only all-time leaderboard entry.
+
+        Scores are kept in memory only and are unique by nickname. If the same
+        nickname appears again, only a strictly higher length replaces the old
+        entry. Bots are intentionally not recorded because the landing-page
+        board is meant to celebrate human players.
+        """
+        if not valid_nickname(nickname):
+            return
+        score = clamp_int(length, 1, GRID_W * GRID_H)
+        existing = next((row for row in self.all_time_high if row.get("nickname") == nickname), None)
+        if existing is not None:
+            if score <= int(existing.get("length", 0)):
+                return
+            existing["length"] = score
+            existing["datetime"] = self._highscore_timestamp()
+        else:
+            self.all_time_high.append({
+                "nickname": nickname,
+                "length": score,
+                "datetime": self._highscore_timestamp(),
+            })
+        self.all_time_high.sort(key=lambda row: (-int(row.get("length", 0)), str(row.get("datetime", "")), str(row.get("nickname", ""))))
+        del self.all_time_high[ALL_TIME_HIGH_LIMIT:]
+
+    def all_time_high_snapshot(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "rank": index + 1,
+                "nickname": str(row.get("nickname", "")),
+                "length": int(row.get("length", 0)),
+                "datetime": str(row.get("datetime", "")),
+            }
+            for index, row in enumerate(self.all_time_high[:ALL_TIME_HIGH_LIMIT])
+        ]
 
     def _generate_game_id(self) -> str:
         for _ in range(1000):
@@ -1259,6 +1307,10 @@ async def handle_message(client: ClientConn, raw: str) -> None:
             if game is not None:
                 await game.remove_human(client)
         client.send_control({"type": "left_game", "message": "You left the game."})
+        return
+
+    if msg_type == "all_time_high":
+        client.send_control({"type": "all_time_high", "scores": manager.all_time_high_snapshot(), "serverNow": unix_ms()})
         return
 
     if client.game_id is None:

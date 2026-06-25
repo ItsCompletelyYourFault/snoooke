@@ -1275,7 +1275,7 @@ manager = GameManager()
 async def handle_message(client: ClientConn, raw: str | bytes | bytearray) -> None:
     try:
         payload = json.loads(raw)
-    except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
+    except (json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError):
         client.send_control({"type": "error", "code": "BAD_JSON", "message": "Message is not valid JSON."})
         return
     if not isinstance(payload, dict):

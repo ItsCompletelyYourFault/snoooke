@@ -96,3 +96,15 @@ This is a complete playable implementation, but a public deployment should add:
 Clients send telemetry frequently, including coordinates, length and direction. The server stores this for observation, but never trusts it for game physics. Movement, food, score, collisions, bot decisions, level changes and death events are calculated server-side.
 
 This avoids the easiest cheating path: a client cannot simply submit a fake snake body, fake length or fake sprint distance and win.
+
+## Mobile browser strategy
+
+The client remains a single responsive `index.html` instead of a separate mobile page. Mobile devices switch into a focused game mode after joining a match:
+
+- the page requests fullscreen/landscape where the browser permits it;
+- the app uses `100dvh`/safe-area layout and locks scrolling during active play;
+- the canvas fills the viewport while the HUD, joystick, sprint button, chat, and scoreboard are overlays;
+- chat and scoreboard are hidden behind floating buttons and can be opened without leaving the game;
+- the joystick uses nipplejs plus a direct pointer/touch fallback path so direction changes are sent immediately.
+
+Some iOS browser chrome cannot be removed by JavaScript unless the page is installed as a home-screen web app. The CSS still minimizes wasted space in normal Safari/Chrome tabs.

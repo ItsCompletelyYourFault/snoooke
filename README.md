@@ -14,6 +14,9 @@ I am very interested in what happens when smart people use AI to improve code.
 **This project is deeply insecure and full of bugs**. It is not ready for production use. It is for sure not safe to
 run. Please don't run server.py anywhere near a production environment.
 
+## PoC
+https://snoooke.mooo.com/
+
 ## Features
 
 - Server-generated Game-ID: 5 characters, A-Z, and 0-9.

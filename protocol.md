@@ -202,3 +202,12 @@ The server stores `nickname`, `length`, and UTC `datetime` for the top human-pla
 ```json
 {"type":"error","code":"GAME_NOT_FOUND","message":"Game-ID is invalid or expired."}
 ```
+
+
+## Validation and negative-test expectations
+
+No protocol message changes were introduced by the additional input-surface tests. The tests exercise invalid and hostile variants of the existing messages and transport frames.
+
+Expected server behavior for malformed input is one of: reject with an error message, ignore the field/message, clamp to a documented bound, truncate chat text to the configured limit, or clean up the connection state. Malformed input must not be trusted for authoritative movement, must not create unbounded server-side storage, and must not crash the server process.
+
+The negative tests also cover browser/client-disconnect lifecycle behavior: when a WebSocket connection ends after joining, the server should remove that human player from the game.

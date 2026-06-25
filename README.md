@@ -250,3 +250,39 @@ python3 test_server_expected_inputs.py
 python3 test_server_alltime.py
 python3 test_server_collisions.py
 ```
+
+
+### Additional server input hardening tests
+
+The server input surface was reviewed again against `server.py`, `SERVER_INPUT_SURFACE.md`, `README.md`, and `protocol.md`. The only extra lifecycle surface identified was client disconnect/end-of-stream cleanup in `websocket_handler(...)`; it is now documented and covered by `test_server_zero_trust_vectors.py`. No new WebSocket message types were introduced.
+
+New test-only files:
+
+- `test_server_zero_trust_vectors.py` checks injection-style strings, overlong and missing fields, chat as data, telemetry bounds, and WebSocket disconnect cleanup.
+- `test_server_deep_fuzz_inputs.py` sends more randomized transport and payload data, including random binary frames, NUL/control characters, char(255)-style bytes, tabs/newlines, long strings, and unexpected frame object types.
+- `test_server_python_sanitization_inputs.py` targets Python-specific edge cases: JSON `NaN`/`Infinity`, huge integer literals, deep JSON nesting, and Python dunder/format strings.
+- `test_server_unicode_inputs.py` checks Unicode and emoji handling: nicknames stay ASCII-only, chat remains serializable/bounded, and Unicode/control strings in non-chat fields do not steer or corrupt server state.
+
+Run the additional passing test groups:
+
+```bash
+python3 test_server_zero_trust_vectors.py
+python3 test_server_deep_fuzz_inputs.py
+python3 test_server_unicode_inputs.py
+```
+
+Run the Python-specific hardening test:
+
+```bash
+python3 test_server_python_sanitization_inputs.py
+```
+
+At the time these tests were added, `test_server_python_sanitization_inputs.py` intentionally exposes a remaining issue in unchanged `server.py`: a JSON message containing a massive integer literal can make `json.loads(...)` raise a plain `ValueError` before the normal `BAD_JSON` path handles it. This is left unfixed because this task requested tests and documentation only.
+
+Security test runner:
+
+```bash
+./run_input_security_tests.sh
+```
+
+This runner includes the new tests. It will return non-zero until the Python huge-integer parsing issue above is fixed in `server.py`.

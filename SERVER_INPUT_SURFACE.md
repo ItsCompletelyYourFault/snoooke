@@ -23,7 +23,8 @@ Read during module import or TLS setup:
 - binary frames <= 64 KiB are decoded as UTF-8 with replacement;
 - binary frames > 64 KiB are rejected with `TOO_LARGE`;
 - decoded/text frames > 128 KiB are rejected with `TOO_LARGE`;
-- accepted frames are passed to `handle_message(client, raw)`.
+- accepted frames are passed to `handle_message(client, raw)`;
+- connection end/disconnect is client-controlled transport lifecycle input and triggers cleanup in `websocket_handler(...)`'s `finally` block.
 
 ## 3. JSON envelope input
 
@@ -68,3 +69,19 @@ The negative/fuzz suites exposed crashes where membership checks assumed hashabl
 - `payload["dir"]` could be an object/list, causing a `TypeError` in `receive_telemetry`.
 
 `server.py` now verifies that dispatcher `type` and direction `dir` values are strings before checking membership against known message types or `DIRS`. Invalid non-string values are rejected, ignored, or handled through the existing `NOT_IN_GAME` / `UNKNOWN_TYPE` error paths instead of crashing. `clamp_int` also catches `OverflowError`, and `handle_message` now treats non-JSON-compatible raw input as `BAD_JSON`.
+
+
+## 8. Additional test-only coverage added after this review
+
+No additional JSON message types or hidden gameplay input handlers were found beyond the documented environment, WebSocket transport, JSON envelope, public messages, in-game messages, and disconnect lifecycle surfaces.
+
+New test files added without modifying `server.py`:
+
+- `test_server_zero_trust_vectors.py`: injection-like strings, overlong fields, missing/extra fields, chat-as-data behavior, telemetry bounds, and WebSocket disconnect cleanup.
+- `test_server_deep_fuzz_inputs.py`: heavier deterministic fuzzing with random binary frames, unexpected non-string/non-bytes frame objects, NUL/control characters, char(255)-style bytes, tabs/newlines, long strings, randomized public messages, and randomized in-game messages.
+- `test_server_python_sanitization_inputs.py`: Python-specific parser/conversion edge cases such as JSON `NaN`/`Infinity`, massive integer literals, deeply nested JSON, and Python dunder/format strings treated as data.
+- `test_server_unicode_inputs.py`: Unicode nickname rejection according to the ASCII nickname policy, emoji/combining/RTL/zero-width chat handling, lone-surrogate JSON strings, and Unicode/control strings in non-chat fields.
+
+Current known test-discovered issue with unchanged `server.py`:
+
+- `test_server_python_sanitization_inputs.py` currently exposes that `json.loads(...)` can raise a plain `ValueError` for huge integer literals before the message reaches normal validation. Because this task requested tests only, the server is intentionally not patched here.

@@ -1172,6 +1172,7 @@
     let rejoinPendingNickname = null;
 
     const REJOIN_COOLDOWN_MS = 5000;
+    const NICKNAME_STORAGE_KEY = "snoooke.lastNickname.v1";
 
     const NICKNAME_POOL = [
       "SirHissALot", "SnekAndDestroy", "NoodleNinja", "VenomVroom",
@@ -1474,6 +1475,7 @@
         showToast("Nickname must still be 5-15 letters/numbers before rejoining.");
         return;
       }
+      rememberNickname(nickname);
       rejoinPending = true;
       rejoinPendingGameId = gameId;
       rejoinPendingNickname = nickname;
@@ -1605,6 +1607,48 @@
       return STUPID_USELESS_TIPS[Math.floor(Math.random() * STUPID_USELESS_TIPS.length)] || "Use WASD or arrow keys and spacebar.";
     }
 
+    function safeLocalStorage() {
+      try {
+        if (!("localStorage" in window) || !window.localStorage) return null;
+        const storage = window.localStorage;
+        const probeKey = "__snoooke_storage_probe__";
+        storage.setItem(probeKey, "1");
+        storage.removeItem(probeKey);
+        return storage;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    const nicknameStorage = safeLocalStorage();
+
+    function sanitizeNicknameValue(value) {
+      return String(value || "").replace(/[^A-Za-z0-9]/g, "").slice(0, 15);
+    }
+
+    function loadStoredNickname() {
+      if (!nicknameStorage) return null;
+      try {
+        const raw = nicknameStorage.getItem(NICKNAME_STORAGE_KEY);
+        if (raw === null) return null;
+        if (validateNickname(raw)) return raw;
+        nicknameStorage.removeItem(NICKNAME_STORAGE_KEY);
+      } catch (_) {}
+      return null;
+    }
+
+    function rememberNickname(nickname) {
+      if (!nicknameStorage) return false;
+      const clean = sanitizeNicknameValue(nickname);
+      if (!validateNickname(clean)) return false;
+      try {
+        nicknameStorage.setItem(NICKNAME_STORAGE_KEY, clean);
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+
     function randomNickname() {
       const validNames = NICKNAME_POOL.filter(validateNickname);
       return validNames[Math.floor(Math.random() * validNames.length)] || "SirNoodle";
@@ -1648,6 +1692,7 @@
         setLandingError("Nickname must be 5-15 characters and use only A-Z, a-z and 0-9.");
         return;
       }
+      rememberNickname(nickname);
 
       requestMobileImmersion();
       setLandingError("Connecting...");
@@ -2228,7 +2273,10 @@
       }
     }
 
-    $("randomName").addEventListener("click", () => { nicknameInput.value = randomNickname(); });
+    $("randomName").addEventListener("click", () => {
+      nicknameInput.value = randomNickname();
+      rememberNickname(nicknameInput.value);
+    });
     $("showJoin").addEventListener("click", () => { joinBox.classList.toggle("visible"); gameIdInput.focus(); });
     $("justPlay").addEventListener("click", () => startConnection({ type: "just_play" }));
     $("createGame").addEventListener("click", () => startConnection({ type: "create_game" }));
@@ -2283,7 +2331,10 @@
     mobileScoreToggle.addEventListener("pointerdown", (event) => { event.preventDefault(); setMobileScoreOpen(!mobileScoreOpen); }, { passive: false });
 
     gameIdInput.addEventListener("input", () => { gameIdInput.value = gameIdInput.value.toUpperCase().replace(/[^A-Z0-9]/g, ""); });
-    nicknameInput.addEventListener("input", () => { nicknameInput.value = nicknameInput.value.replace(/[^A-Za-z0-9]/g, ""); });
+    nicknameInput.addEventListener("input", () => {
+      nicknameInput.value = sanitizeNicknameValue(nicknameInput.value);
+      rememberNickname(nicknameInput.value);
+    });
 
     $("leaveGame").addEventListener("click", leaveCurrentGame);
     rejoinButton.addEventListener("click", requestRejoin);
@@ -2302,7 +2353,7 @@
       window.visualViewport.addEventListener("resize", () => { resizeCanvas(); updateOrientationClass(); });
     }
 
-    nicknameInput.value = randomNickname();
+    nicknameInput.value = loadStoredNickname() || randomNickname();
     $("meaningfultips").innerText = randomTip();
 
     loadAllTimeHigh();

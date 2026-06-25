@@ -22,6 +22,7 @@ run. Please don't run server.py anywhere near a production environment.
   - Join Game: manually enter a valid Game-ID.
   - Create Game: create a lobby with a 30 second server-side warm-up countdown.
 - Nicknames: 5-15 characters, A-Z, a-z, and 0–9. The default/random nickname is chosen from a silly snake-name list and filtered to valid names.
+- The browser remembers the last valid selected nickname in permanent local storage and reuses it on the next page load.
 - Per-game chatroom with 1–255 character messages; the chat panel has a fixed height and scrolls.
 - Live top 3 scoreboard.
 - Volatile server-runtime all-time highscore board for the biggest human noodles, shown on the landing page.
@@ -163,11 +164,20 @@ python3 test_server_alltime.py
 ```
 The all-time board is in memory only. Restarting `server.py` resets it.
 
-### Testing the browser keyboard controls
+### Testing the browser client
 ```bash
 node test_index_keyboard.js
+node test_index_nickname_storage.js
+node test_index_landing_alltime.js
 ```
-The keyboard test runs without external npm dependencies. It simulates a game join while the old Game-ID input still has focus, then verifies that a WASD key sends an input message instead of being ignored.
+The browser tests run without external npm dependencies. They use `test_index_harness.js` to execute the inline `index.html` script in a fake DOM/WebSocket environment.
+
+Covered client regressions:
+
+- keyboard focus after joining: stale focus in the hidden Game-ID input must not eat WASD/arrow/Space controls;
+- chat input must remain a real text field and must not send movement commands;
+- nickname persistence: a valid stored nickname prefills the landing page, invalid stored values are discarded, typed/random/manual nicknames are remembered only when valid;
+- landing highscore loading: the page sends one `all_time_high` request and renders returned highscore rows.
 
 ### Testing the server security for malformed inputs
 1. Expected-input test

@@ -6,6 +6,10 @@ All messages are JSON objects.
 
 The JSON messages below are unchanged whether the socket uses plain WebSocket or TLS. For local development/debug mode the server may listen on `ws://HOST:PORT`. With SSL enabled it listens on `wss://HOST:PORT`.
 
+## Browser-only client behavior
+
+The browser stores the last valid selected nickname in permanent local storage under `snoooke.lastNickname.v1`. This is a client convenience feature only and does not change the WebSocket protocol. The client still sends the nickname explicitly in `just_play`, `create_game`, and `join_game` requests.
+
 ## Client to server
 
 ### Just Play

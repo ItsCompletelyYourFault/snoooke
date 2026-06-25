@@ -169,4 +169,76 @@ node test_index_keyboard.js
 ```
 The keyboard test runs without external npm dependencies. It simulates a game join while the old Game-ID input still has focus, then verifies that a WASD key sends an input message instead of being ignored.
 
+### Testing the server security for malformed inputs
+1. Expected-input test
+`test_server_expected_inputs.py` verifies that valid input still works:
+* valid env import/config values;
+* valid `SNAKE_SSL=0` and debug SSL behavior;
+* WebSocket text and binary frames;
+* `create_game`;
+* `join_game`;
+* `just_play`;
+* `leave_game`;
+* `all_time_high`;
+* `input`;
+* `sprint`;
+* `telemetry`;
+* `chat`;
+baseline error handling for bad JSON / non-object JSON / in-game messages before joining.
 
+Run:
+```bash
+cd snoooke-server-input-tests
+python3 test_server_expected_inputs.py
+```
+
+
+2. Malicious-input test
+`test_server_malicious_inputs.py` sends malformed and hostile-but-JSON-valid inputs to every identified location:
+* invalid `SNAKE_PORT`;
+* forced SSL with missing cert/key;
+* oversized WebSocket frames;
+* invalid UTF-8 bytes;
+* invalid JSON;
+* array payloads instead of objects;
+* invalid nicknames;
+* invalid Game-IDs;
+* already-joined attempts;
+* unknown message types;
+* stale/invalid direction input;
+* invalid sprint conditions;
+* huge telemetry;
+* non-list telemetry segments;
+* empty / non-string / oversized chat;
+* leave without game;
+* ghost game;
+* unhashable JSON values in type and dir.
+  
+```bash
+cd snoooke-server-input-tests
+python3 test_server_malicious_inputs.py
+```
+
+3. Fuzz-input test
+`test_server_fuzz_inputs.py` performs deterministic random/fuzzy testing without extra dependencies:
+* random env values;
+* random raw JSON envelopes;
+* random public message payloads;
+* random in-game payloads;
+* random WebSocket text/binary frames;
+* oversized transport frames;
+* invalid UTF-8 frames;
+* random nested JSON values.
+
+```bash
+cd snoooke-server-input-tests
+python3 test_server_fuzz_inputs.py
+```
+
+4. Full Validation:
+```bash
+python3 -m py_compile server.py server_input_test_utils.py test_server_expected_inputs.py test_server_malicious_inputs.py test_server_fuzz_inputs.py
+python3 test_server_expected_inputs.py
+python3 test_server_alltime.py
+python3 test_server_collisions.py
+```

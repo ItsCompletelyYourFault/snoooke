@@ -542,7 +542,7 @@ class Game:
             return
 
         if client.last_chat_time+CHAT_HISTORY_LIMIT > now:
-            print(f"Ignoring chat message from {client.nickname} for flood ...", flush=True)
+            #print(f"Ignoring chat message from {client.nickname} for flood ...", flush=True)
             return
 
         async with self.lock:

@@ -6,7 +6,7 @@ const path = require("path");
 const vm = require("vm");
 const assert = require("assert");
 
-const htmlPath = path.join(__dirname, "client", "index.html");
+const htmlPath = path.join(__dirname, "", "index.html");
 const html = fs.readFileSync(htmlPath, "utf8");
 const scriptMatch = html.match(/<script>([\s\S]*?)<\/script>\s*<\/body>/);
 if (!scriptMatch) throw new Error("Could not find the inline game script in client/index.html");

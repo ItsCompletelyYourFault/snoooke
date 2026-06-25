@@ -2,6 +2,10 @@
 
 All messages are JSON objects.
 
+## Transport
+
+The JSON messages below are unchanged whether the socket uses plain WebSocket or TLS. For local development/debug mode the server may listen on `ws://HOST:PORT`. With SSL enabled it listens on `wss://HOST:PORT`.
+
 ## Client to server
 
 ### Just Play

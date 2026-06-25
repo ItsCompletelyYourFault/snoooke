@@ -18,10 +18,13 @@ import random
 import re
 import secrets
 import signal
+import sys
+import ssl
 import string
 import time
 from collections import deque
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Deque, Optional
 
 from websockets.asyncio.server import ServerConnection, serve
@@ -29,6 +32,12 @@ from websockets.exceptions import ConnectionClosed
 
 HOST = os.environ.get("SNAKE_HOST", "0.0.0.0")
 PORT = int(os.environ.get("SNAKE_PORT", "8765"))
+SSL_MODE = os.environ.get("SNAKE_SSL", "auto").strip().lower()
+SSL_CERT_FILE = os.environ.get("SNAKE_SSL_CERT", "fullchain.pem")
+SSL_KEY_FILE = os.environ.get("SNAKE_SSL_KEY", "privkey.pem")
+
+TRUTHY_ENV = {"1", "true", "yes", "y", "on"}
+FALSEY_ENV = {"0", "false", "no", "n", "off", "none", "disabled"}
 
 GAME_ID_ALPHABET = string.ascii_uppercase + string.digits
 GAME_ID_LENGTH = 5
@@ -117,6 +126,70 @@ def point_to_json(p: tuple[int, int]) -> list[int]:
 
 def random_id(prefix: str = "") -> str:
     return prefix + secrets.token_hex(8)
+
+
+def env_flag(name: str) -> Optional[bool]:
+    value = os.environ.get(name)
+    if value is None:
+        return None
+    normalized = value.strip().lower()
+    if normalized in TRUTHY_ENV:
+        return True
+    if normalized in FALSEY_ENV:
+        return False
+    return None
+
+
+def debug_mode_enabled() -> bool:
+    """Return True when running under a local/debugger-style setup.
+
+    PyCharm sets PYCHARM_HOSTED for many run/debug configurations, and
+    sys.gettrace() is non-None while a Python debugger is attached. An explicit
+    SNAKE_DEBUG=1 override is also supported for local terminal runs.
+    """
+    explicit = env_flag("SNAKE_DEBUG")
+    if explicit is not None:
+        return explicit
+    if os.environ.get("PYCHARM_HOSTED") == "1":
+        return True
+    if sys.gettrace() is not None:
+        return True
+    return any(name.startswith("pydevd") for name in sys.modules)
+
+
+def build_ssl_context() -> tuple[Optional[ssl.SSLContext], str]:
+    """Build the TLS context, or return None for plain local ws:// mode.
+
+    SNAKE_SSL can be:
+      - auto/default: use TLS when cert/key files exist, except in debug mode.
+      - 1/true/yes/on: require TLS and fail if cert/key files are missing.
+      - 0/false/no/off/none/disabled: force plain ws://.
+
+    In PyCharm/debug mode the server skips SSL unless SNAKE_SSL=1 is set.
+    """
+    ssl_mode = os.environ.get("SNAKE_SSL", SSL_MODE).strip().lower()
+    cert_file = os.environ.get("SNAKE_SSL_CERT", SSL_CERT_FILE)
+    key_file = os.environ.get("SNAKE_SSL_KEY", SSL_KEY_FILE)
+    forced_ssl = ssl_mode in TRUTHY_ENV
+    disabled_ssl = ssl_mode in FALSEY_ENV
+
+    if disabled_ssl:
+        return None, "disabled by SNAKE_SSL"
+    if debug_mode_enabled() and not forced_ssl:
+        return None, "debug mode detected"
+
+    cert_path = Path(cert_file)
+    key_path = Path(key_file)
+    if not cert_path.exists() or not key_path.exists():
+        if forced_ssl:
+            raise FileNotFoundError(
+                f"SSL requested, but certificate/key files are missing: {cert_path}, {key_path}"
+            )
+        return None, "certificate/key files not found"
+
+    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ssl_context.load_cert_chain(str(cert_path), keyfile=str(key_path))
+    return ssl_context, f"certificate {cert_path} with key {key_path}"
 
 
 @dataclass
@@ -231,7 +304,7 @@ class Game:
         self.tick_hz = NORMAL_TICK_HZ
         self.target_tick_hz = NORMAL_TICK_HZ
         self.level = "Chicken"
-        self.target_food_count = 5
+        self.target_food_count = 10
         self.last_food_adjust = 0.0
         self.last_state_sent = 0.0
         self.next_bot_spawn_at = self.created_at
@@ -516,10 +589,10 @@ class Game:
         if leader_points < 5:
             return "Chicken", CHICKEN_TICK_HZ, 5
         if leader_points <= 15:
-            return "Noodle", NORMAL_TICK_HZ, 3
+            return "Noodle", NORMAL_TICK_HZ, 10
         if leader_points <= 45:
-            return "Ramen", NORMAL_TICK_HZ, 2
-        return "Nani?!", NOODLE_TICK_HZ, 1
+            return "Ramen", NORMAL_TICK_HZ, 15
+        return "Nani?!", NOODLE_TICK_HZ, 30
 
     def _update_level_progression(self) -> None:
         new_level, target_hz, target_food = self._level_targets()
@@ -759,8 +832,7 @@ class Game:
         sprint_used: dict[str, bool] = {}
         sprint_drop_cells: list[tuple[int, int]] = []
         food_on_path: dict[str, set[tuple[int, int]]] = {}
-        new_heads: dict[str, tuple[int, int]] = {}
-        will_eat: dict[str, bool] = {}
+        final_heads: dict[str, tuple[int, int]] = {}
 
         for snake in alive:
             if snake.pending_direction in DIRS and OPPOSITE.get(snake.pending_direction) != snake.direction:
@@ -774,10 +846,6 @@ class Game:
 
             steps = SPRINT_STEPS if use_sprint else 1
             dx, dy = DIRS[snake.direction]
-            new_head = (snake.head[0] + dx, snake.head[1] + dy)
-            new_heads[snake.snake_id] = new_head
-            will_eat[snake.snake_id] = new_head in self.food
-
             cx, cy = snake.head
             path: list[tuple[int, int]] = []
             for _ in range(steps):
@@ -785,46 +853,58 @@ class Game:
                 cy += dy
                 path.append((cx, cy))
             paths[snake.snake_id] = path
+            final_heads[snake.snake_id] = path[-1]
             food_on_path[snake.snake_id] = {cell for cell in path if cell in self.food}
 
-        # Body cells that are expected to remain occupied through this tick.
-        body_owners: dict[tuple[int, int], str] = {}
+        # Body cells that should be lethal for head/body collisions this tick.
+        #
+        # The previous version removed tail cells twice: once through cells_vacating
+        # and once again through a second "not will_eat" tail trim. For a length-3
+        # snake this accidentally removed the segment directly behind the head from
+        # the collision map, which made another snake able to pass through it.
+        #
+        # Build the predicted final body instead: all path cells except the final
+        # head plus the old body cells that remain after movement, sprint cost and
+        # already-pending growth/food on the path. This also makes the old head count
+        # as body when it remains after movement, and makes sprint intermediate cells
+        # collide as body instead of becoming invisible for one tick.
+        body_owners: dict[tuple[int, int], set[str]] = {}
+        own_path_body_cells: dict[str, set[tuple[int, int]]] = {}
+        own_retained_old_cells: dict[str, set[tuple[int, int]]] = {}
         for snake in alive:
-            body = list(snake.body)
-            # Body collision excludes the old head; head-to-head and cross-swap are handled separately.
-            body_without_head = body[1:]
+            snake_id = snake.snake_id
+            path = paths[snake_id]
+            steps = len(path)
+            old_body = list(snake.body)
+            old_length = old_lengths[snake_id]
+            sprint_cost = SPRINT_COST if sprint_used.get(snake_id, False) else 0
+            predicted_growth = min(steps, snake.grow + len(food_on_path.get(snake_id, set())))
+            predicted_target_length = max(1, old_length - sprint_cost + predicted_growth)
+            retained_old_count = max(0, min(old_length, predicted_target_length - steps))
 
-            steps = len(paths[snake.snake_id])
-            sprint_cost = SPRINT_COST if sprint_used.get(snake.snake_id, False) else 0
-            predicted_growth = min(steps, snake.grow + len(food_on_path.get(snake.snake_id, set())))
-            cells_vacating = max(0, steps + sprint_cost - predicted_growth)
-            if cells_vacating > 0:
-                body_without_head = body_without_head[: max(0, len(body_without_head) - cells_vacating)]
-            if body_without_head and not will_eat.get(snake.snake_id, False):
-                body_without_head = body_without_head[:-1]
-            for cell in body_without_head:
-                body_owners.setdefault(cell, snake.snake_id)
+            path_body_cells = set(path[:-1])
+            retained_old_cells = set(old_body[:retained_old_count]) if retained_old_count > 0 else set()
+            own_path_body_cells[snake_id] = path_body_cells
+            own_retained_old_cells[snake_id] = retained_old_cells
 
-        dead: dict[str, tuple[str, Optional[str]]] = {}
+            for cell in path_body_cells | retained_old_cells:
+                body_owners.setdefault(cell, set()).add(snake_id)
 
-        for snake in alive:
-            for head in paths[snake.snake_id]:
-                if not (0 <= head[0] < GRID_W and 0 <= head[1] < GRID_H):
-                    dead.setdefault(snake.snake_id, ("wall", None))
-                    break
-                owner_id = body_owners.get(head)
-                if owner_id is not None:
-                    if owner_id == snake.snake_id:
-                        dead.setdefault(snake.snake_id, ("self", None))
-                    else:
-                        dead.setdefault(snake.snake_id, ("body", owner_id))
-                    break
+        # Store earliest death event per snake. For the same sub-step, head-to-head
+        # wins over body collision so body rewards are not paid for true head clashes.
+        # Tuple layout: (step_index, priority, reason, killer_id). Lower is earlier.
+        death_events: dict[str, tuple[int, int, str, Optional[str]]] = {}
 
-        final_heads = {snake_id: path[-1] for snake_id, path in paths.items()}
+        def mark_dead(snake_id: str, step_index: int, priority: int, reason: str, killer_id: Optional[str] = None) -> None:
+            event = (step_index, priority, reason, killer_id)
+            previous = death_events.get(snake_id)
+            if previous is None or (event[0], event[1]) < (previous[0], previous[1]):
+                death_events[snake_id] = event
 
-        # Head collisions, including sprint paths that hit a head after another snake's
-        # shorter movement has already stopped for this tick.
         ids = [s.snake_id for s in alive]
+
+        # Head collisions, including sprint paths that hit a head after another
+        # snake's shorter movement has already stopped for this tick.
         for i, a_id in enumerate(ids):
             for b_id in ids[i + 1:]:
                 a_path = paths[a_id]
@@ -836,9 +916,46 @@ class Game:
                     a_prev = old_heads[a_id] if step == 0 else (a_path[step - 1] if step - 1 < len(a_path) else a_path[-1])
                     b_prev = old_heads[b_id] if step == 0 else (b_path[step - 1] if step - 1 < len(b_path) else b_path[-1])
                     if a_pos == b_pos or (a_pos == b_prev and b_pos == a_prev):
-                        dead.setdefault(a_id, ("head", None))
-                        dead.setdefault(b_id, ("head", None))
+                        mark_dead(a_id, step, 0, "head", None)
+                        mark_dead(b_id, step, 0, "head", None)
                         break
+
+        for snake in alive:
+            snake_id = snake.snake_id
+            for step, head in enumerate(paths[snake_id]):
+                if not (0 <= head[0] < GRID_W and 0 <= head[1] < GRID_H):
+                    mark_dead(snake_id, step, 2, "wall", None)
+                    break
+                owners = body_owners.get(head)
+                if owners:
+                    self_body_hit = False
+                    other_owner_id: Optional[str] = None
+                    for owner_id in sorted(owners):
+                        if owner_id == snake_id:
+                            # A snake may sprint across cells that become its own
+                            # trailing path during the same tick. That should not
+                            # count as self-collision unless the cell was also part
+                            # of the retained old body.
+                            if (
+                                head in own_path_body_cells.get(snake_id, set())
+                                and head not in own_retained_old_cells.get(snake_id, set())
+                            ):
+                                continue
+                            self_body_hit = True
+                            break
+                        other_owner_id = owner_id
+                        break
+                    if self_body_hit:
+                        mark_dead(snake_id, step, 1, "self", None)
+                        break
+                    if other_owner_id is not None:
+                        mark_dead(snake_id, step, 1, "body", other_owner_id)
+                        break
+
+        dead: dict[str, tuple[str, Optional[str]]] = {
+            snake_id: (reason, killer_id)
+            for snake_id, (_step, _priority, reason, killer_id) in death_events.items()
+        }
 
         rewards: dict[str, int] = {}
         for dead_id, (reason, killer_id) in dead.items():
@@ -853,7 +970,7 @@ class Game:
                 snake.alive = False
                 snake.death_reason = reason
                 snake.killed_by = killer_id
-                self._scatter_death_food(new_heads.get(snake.snake_id, snake.head), old_lengths.get(snake.snake_id, snake.length))
+                self._scatter_death_food(final_heads.get(snake.snake_id, snake.head), old_lengths.get(snake.snake_id, snake.length))
                 if not snake.bot and snake.client is not None:
                     killer_name = None
                     if killer_id and killer_id in self.snakes:
@@ -1205,6 +1322,9 @@ async def main() -> None:
         except NotImplementedError:
             pass
 
+    ssl_context, ssl_reason = build_ssl_context()
+    scheme = "wss" if ssl_context is not None else "ws"
+
     async with serve(
         websocket_handler,
         HOST,
@@ -1214,8 +1334,9 @@ async def main() -> None:
         ping_interval=20,
         ping_timeout=20,
         compression=None,
+        ssl=ssl_context,
     ):
-        print(f"Snake server listening on ws://{HOST}:{PORT}", flush=True)
+        print(f"Snake server listening on {scheme}://{HOST}:{PORT} ({ssl_reason})", flush=True)
         await stop
 
 

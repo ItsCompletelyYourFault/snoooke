@@ -2,15 +2,27 @@
 
 A browser-based multiplayer Snake game with a Python WebSocket server.
 
+**Important**: This project is a vibe coding project for experimenting! It is intended for experienced developers who
+(as me) are interested in better understanding where AI will be able to assist and where not. 
+Please feel free to optimize, bugfix, and improve the project but **please use AI (preferably ChatGPT) for as much as 
+possible**!
+Ask ChatGPT to change the color of a button. If you spot an issue where it messed up, tell ChatGPT to fix that
+before submitting your code. It is not supposed to be a project of just bad code, not everything AI outputs should end
+up here. But please try use vibe coding and share your experiences, struggles, and stories here or on reddit.
+I am very interested in what happens when smart people use AI to improve code.
+
+**This project is deeply insecure and full of bugs**. It is not ready for production use. It is for sure not safe to
+run. Please don't run server.py anywhere near a production environment.
+
 ## Features
 
-- Server-generated Game-ID: 5 characters, A-Z and 0-9.
+- Server-generated Game-ID: 5 characters, A-Z, and 0-9.
 - Landing choices:
   - Just Play: join a random running joinable game, or create a new instant game with 4 bots if none is available.
   - Join Game: manually enter a valid Game-ID.
   - Create Game: create a lobby with a 30 second server-side warm-up countdown.
-- Nicknames: 5-15 characters, A-Z, a-z and 0-9. The default/random nickname is chosen from a silly snake-name list and filtered to valid names.
-- Per-game chatroom with 1-255 character messages; the chat panel has a fixed height and scrolls.
+- Nicknames: 5-15 characters, A-Z, a-z, and 0–9. The default/random nickname is chosen from a silly snake-name list and filtered to valid names.
+- Per-game chatroom with 1–255 character messages; the chat panel has a fixed height and scrolls.
 - Live top 3 scoreboard.
 - Up to 16 human players per game.
 - If an active game is full and has bots, the lowest-ranked bot is kicked for a human player.
@@ -20,7 +32,7 @@ A browser-based multiplayer Snake game with a Python WebSocket server.
   - Noodle: leader above 40 points, 20% faster tick speed, 1 food item.
 - Smooth level progression: tick speed interpolates slowly toward the target speed and food count changes gradually.
 - Snake length is the score.
-- Collision detection on the server: walls, own body, other snakes, head-on collisions and head swaps.
+- Collision detection on the server: walls, own body, other snakes, head-on collisions, and head swaps.
 - Body-kill reward: if a snake dies by hitting another snake's body, the surviving body owner inherits 30% of the dead snake's length.
 - Death-food scramble: snakes longer than 5 drop a random 10-30% of their old length as food near the death point.
 - Server-controlled bots with names ending in `*`.
@@ -74,7 +86,7 @@ Desktop:
 
 Mobile/touch devices:
 
-- The client detects iPhone, iPad and Android style devices.
+- The client detects iPhone, iPad, and Android style devices.
 - It requests landscape orientation when a match starts.
 - Use the left virtual joystick to steer and the right Sprint button to sprint.
 - Chat is hidden behind the chat icon; unread chat is shown with a marker.
@@ -89,13 +101,13 @@ This is a complete playable implementation, but a public deployment should add:
 - Authentication or session tokens if persistent identity matters.
 - Horizontal sharding by Game-ID for very large deployments.
 - Binary delta snapshots instead of JSON full snapshots if bandwidth becomes the bottleneck.
-- Metrics for tick duration, queue pressure, connection count, games count and dropped clients.
+- Metrics for tick duration, queue pressure, connection count, games count, and dropped clients.
 
 ## Server-authoritative design
 
-Clients send telemetry frequently, including coordinates, length and direction. The server stores this for observation, but never trusts it for game physics. Movement, food, score, collisions, bot decisions, level changes and death events are calculated server-side.
+Clients send telemetry frequently, including coordinates, length, and direction. The server stores this for observation, but never trusts it for game physics. Movement, food, score, collisions, bot decisions, level changes, and death events are calculated server-side.
 
-This avoids the easiest cheating path: a client cannot simply submit a fake snake body, fake length or fake sprint distance and win.
+This avoids the easiest cheating path: a client cannot simply submit a fake snake body, fake length, or fake sprint distance and win.
 
 ## Mobile browser strategy
 
@@ -108,3 +120,37 @@ The client remains a single responsive `index.html` instead of a separate mobile
 - the joystick uses nipplejs plus a direct pointer/touch fallback path so direction changes are sent immediately.
 
 Some iOS browser chrome cannot be removed by JavaScript unless the page is installed as a home-screen web app. The CSS still minimizes wasted space in normal Safari/Chrome tabs.
+
+## Local SSL / PyCharm debug mode
+
+The server now supports automatic plain WebSocket mode for local development.
+
+- `SNAKE_SSL=auto` is the default. The server uses TLS only when the configured certificate and key files exist and no debugger is detected.
+- When the server is launched from PyCharm debug mode, or when `SNAKE_DEBUG=1` is set, SSL is skipped and the server listens on `ws://...`.
+- Use `SNAKE_SSL=0` to force plain local WebSockets.
+- Use `SNAKE_SSL=1` to require TLS and fail fast if the certificate or key is missing.
+- Certificate paths can be changed with `SNAKE_SSL_CERT=/path/fullchain.pem` and `SNAKE_SSL_KEY=/path/privkey.pem`.
+
+Examples:
+
+```bash
+SNAKE_SSL=0 python server.py
+SNAKE_DEBUG=1 python server.py
+SNAKE_SSL=1 SNAKE_SSL_CERT=fullchain.pem SNAKE_SSL_KEY=privkey.pem python server.py
+```
+
+In local `ws://` mode the existing browser client works from `http://localhost:8080`.
+
+## Collision fixes in this version
+
+The server collision map now predicts the snake bodies that remain after a tick instead of trimming tail cells twice. This fixes a bug where the body segment directly behind a snake's head could disappear from the collision map for one tick. The collision model also now treats an old head as body when it remains after movement, and checks sprint paths against body cells consistently.
+
+
+## Testing
+### Testing the collision model
+```bash
+cd snake-server
+python3 -m py_compile server.py
+python3 test_server_collisions.py
+```
+All Tests should return "PASS".

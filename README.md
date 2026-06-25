@@ -185,8 +185,6 @@ The keyboard test runs without external npm dependencies. It simulates a game jo
 * `telemetry`;
 * `chat`;
 baseline error handling for bad JSON / non-object JSON / in-game messages before joining.
-
-Run:
 ```bash
 cd snoooke-server-input-tests
 python3 test_server_expected_inputs.py
@@ -220,7 +218,7 @@ python3 test_server_malicious_inputs.py
 ```
 
 3. Fuzz-input test
-`test_server_fuzz_inputs.py` performs deterministic random/fuzzy testing without extra dependencies:
+`test_server_fuzz_inputs.py` performs deterministic random/fuzzy testing without extra dependencies. The malicious/fuzz suites verify that malformed JSON envelopes, unhashable JSON object/list values in `type` and `dir`, oversized transport frames, invalid UTF-8, invalid nicknames/Game-IDs, bad telemetry, and chat abuse are rejected, ignored, bounded, or handled without crashing the server.
 * random env values;
 * random raw JSON envelopes;
 * random public message payloads;

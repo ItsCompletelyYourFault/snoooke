@@ -1,6 +1,6 @@
 # Server input surface map
 
-This document identifies the locations where the current `server.py` accepts external or client-controlled input. The server itself was not modified.
+This document identifies the locations where the current `server.py` accepts external or client-controlled input and notes the input-sanitization fixes added after the negative/fuzz tests were created.
 
 ## 1. Process/runtime configuration input
 
@@ -59,12 +59,12 @@ Handled after the client is in a game:
 - Chat text is normalized and truncated to 255 characters.
 - Telemetry `segments` are capped at `MAX_ACTIVE_SNAKES * 8` entries.
 
-## 7. Current issues exposed by the new negative/fuzz tests
+## 7. Negative/fuzz issues fixed in this version
 
-The server currently crashes on some malicious JSON object values because membership checks assume hashable strings:
+The negative/fuzz suites exposed crashes where membership checks assumed hashable strings:
 
-- `payload["type"]` can be an object/list, causing a `TypeError` in `handle_message`.
-- `payload["dir"]` can be an object/list, causing a `TypeError` in `receive_input`.
-- `payload["dir"]` can be an object/list, causing a `TypeError` in `receive_telemetry`.
+- `payload["type"]` could be an object/list, causing a `TypeError` in `handle_message`.
+- `payload["dir"]` could be an object/list, causing a `TypeError` in `receive_input`.
+- `payload["dir"]` could be an object/list, causing a `TypeError` in `receive_telemetry`.
 
-These are intentionally left unfixed because this task requested tests only.
+`server.py` now verifies that dispatcher `type` and direction `dir` values are strings before checking membership against known message types or `DIRS`. Invalid non-string values are rejected, ignored, or handled through the existing `NOT_IN_GAME` / `UNKNOWN_TYPE` error paths instead of crashing. `clamp_int` also catches `OverflowError`, and `handle_message` now treats non-JSON-compatible raw input as `BAD_JSON`.

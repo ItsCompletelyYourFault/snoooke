@@ -106,7 +106,7 @@ def mono() -> float:
 def clamp_int(value: Any, low: int, high: int) -> int:
     try:
         number = int(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return low
     return max(low, min(high, number))
 
@@ -488,7 +488,7 @@ class Game:
 
     async def receive_input(self, client: ClientConn, payload: dict[str, Any]) -> None:
         direction = payload.get("dir")
-        if direction not in DIRS:
+        if not isinstance(direction, str) or direction not in DIRS:
             return
         seq = clamp_int(payload.get("seq"), 0, 2_147_483_647)
         async with self.lock:
@@ -528,7 +528,7 @@ class Game:
         client.last_telemetry = {
             "time": unix_ms(),
             "seq": clamp_int(payload.get("seq"), 0, 2_147_483_647),
-            "dir": payload.get("dir") if payload.get("dir") in DIRS else None,
+            "dir": payload.get("dir") if isinstance(payload.get("dir"), str) and payload.get("dir") in DIRS else None,
             "length": clamp_int(payload.get("length"), 0, GRID_W * GRID_H),
             "segments": segments,
         }
@@ -1272,10 +1272,10 @@ class GameManager:
 manager = GameManager()
 
 
-async def handle_message(client: ClientConn, raw: str) -> None:
+async def handle_message(client: ClientConn, raw: str | bytes | bytearray) -> None:
     try:
         payload = json.loads(raw)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
         client.send_control({"type": "error", "code": "BAD_JSON", "message": "Message is not valid JSON."})
         return
     if not isinstance(payload, dict):
@@ -1283,6 +1283,8 @@ async def handle_message(client: ClientConn, raw: str) -> None:
         return
 
     msg_type = payload.get("type")
+    if not isinstance(msg_type, str):
+        msg_type = ""
 
     if msg_type in {"just_play", "create_game", "join_game"}:
         if client.game_id is not None:
@@ -1345,6 +1347,9 @@ async def websocket_handler(ws: ServerConnection) -> None:
                     client.send_control({"type": "error", "code": "TOO_LARGE", "message": "Binary message too large."})
                     continue
                 raw = raw.decode("utf-8", errors="replace")
+            elif not isinstance(raw, str):
+                client.send_control({"type": "error", "code": "BAD_JSON", "message": "Message is not valid JSON."})
+                continue
             if len(raw) > 128 * 1024:
                 client.send_control({"type": "error", "code": "TOO_LARGE", "message": "Message too large."})
                 continue

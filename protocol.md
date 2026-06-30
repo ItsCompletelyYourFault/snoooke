@@ -211,3 +211,15 @@ No protocol message changes were introduced by the additional input-surface test
 Expected server behavior for malformed input is one of: reject with an error message, ignore the field/message, clamp to a documented bound, truncate chat text to the configured limit, or clean up the connection state. Malformed input must not be trusted for authoritative movement, must not create unbounded server-side storage, and must not crash the server process.
 
 The negative tests also cover browser/client-disconnect lifecycle behavior: when a WebSocket connection ends after joining, the server should remove that human player from the game.
+
+## Invalid and protocol-violating input tests
+
+The protocol message set is unchanged. The server-side tests now also send intentionally invalid or non-canonical inputs to verify stability:
+
+- unknown joined-state message types besides `input`, `sprint`, `telemetry`, and `chat`;
+- case variants such as `Input`, `CHAT`, or non-lowercase directions;
+- duplicate JSON keys, where Python's JSON parser keeps the last duplicate key;
+- lower-case Game-ID join attempts, which are normalized to the existing uppercase Game-ID;
+- pseudo-JSON packets assembled without escaping to simulate raw malicious WebSocket frames.
+
+These are negative/stability tests, not new protocol features.

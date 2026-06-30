@@ -23,6 +23,7 @@ from server_input_test_utils import (
     just_play_via_message,
     load_server,
     reset_manager,
+    temporary_env,
 )
 
 server = load_server("snake_server_deep_fuzz_inputs")
@@ -126,23 +127,24 @@ async def test_random_transport_frames_and_weird_frame_types_do_not_crash() -> N
 async def test_random_public_and_in_game_payloads_do_not_crash_or_grow_unbounded() -> None:
     await reset_manager(server)
     public_client = DummyClient()
-    for _ in range(250):
-        payload = random_payload()
-        await server.handle_message(public_client, json.dumps(payload, separators=(",", ":")))
-        assert len(public_client.control_messages) < 1000
+    with temporary_env(SNAKE_DEBUG="1"):
+        assert server.debug_mode_enabled()
+        for _ in range(250):
+            payload = random_payload()
+            await server.handle_message(public_client, json.dumps(payload, separators=(",", ":")))
+            assert len(public_client.control_messages) < 1000
 
-    joined = await just_play_via_message(server, "FuzzGuy1")
-    game = current_game(server, joined)
-    game.phase = "running"
-    for _ in range(350):
-        payload = random_payload()
-        payload["type"] = RNG.choice(["input", "sprint", "telemetry", "chat", random_json_value(1)])
-        await server.handle_message(joined, json.dumps(payload, separators=(",", ":")))
-        assert len(game.chat_history) <= server.CHAT_HISTORY_LIMIT
-        if joined.last_telemetry is not None:
-            assert len(joined.last_telemetry.get("segments", [])) <= server.MAX_ACTIVE_SNAKES * 8
+        joined = await just_play_via_message(server, "FuzzGuy1")
+        game = current_game(server, joined)
+        game.phase = "running"
+        for _ in range(350):
+            payload = random_payload()
+            payload["type"] = RNG.choice(["input", "sprint", "telemetry", "chat", random_json_value(1)])
+            await server.handle_message(joined, json.dumps(payload, separators=(",", ":")))
+            assert len(game.chat_history) <= server.CHAT_HISTORY_LIMIT
+            if joined.last_telemetry is not None:
+                assert len(joined.last_telemetry.get("segments", [])) <= server.MAX_ACTIVE_SNAKES * 8
     await cleanup_server(server)
-
 
 async def main() -> None:
     tests = [

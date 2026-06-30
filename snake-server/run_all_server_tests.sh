@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
-python3 -m py_compile server.py server_input_test_utils.py   test_server_expected_inputs.py test_server_malicious_inputs.py test_server_fuzz_inputs.py   test_server_zero_trust_vectors.py test_server_deep_fuzz_inputs.py   test_server_python_sanitization_inputs.py test_server_unicode_inputs.py   test_server_alltime.py test_server_collisions.py
+python3 -m py_compile server.py server_input_test_utils.py \
+  test_server_expected_inputs.py test_server_malicious_inputs.py test_server_fuzz_inputs.py \
+  test_server_zero_trust_vectors.py test_server_deep_fuzz_inputs.py \
+  test_server_python_sanitization_inputs.py test_server_unicode_inputs.py \
+  test_server_debug_chat_flood.py test_server_pseudo_json_fuzz_inputs.py \
+  test_server_protocol_violation_inputs.py test_server_alltime.py test_server_collisions.py
 python3 test_server_expected_inputs.py
 python3 test_server_malicious_inputs.py
 python3 test_server_fuzz_inputs.py
@@ -8,5 +13,8 @@ python3 test_server_zero_trust_vectors.py
 python3 test_server_deep_fuzz_inputs.py
 python3 test_server_unicode_inputs.py
 python3 test_server_python_sanitization_inputs.py
+python3 test_server_debug_chat_flood.py
+python3 test_server_pseudo_json_fuzz_inputs.py
+python3 test_server_protocol_violation_inputs.py
 python3 test_server_alltime.py
 python3 test_server_collisions.py

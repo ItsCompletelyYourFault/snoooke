@@ -85,3 +85,15 @@ New test files added without modifying `server.py`:
 Current known test-discovered issue with unchanged `server.py`:
 
 - `test_server_python_sanitization_inputs.py` currently exposes that `json.loads(...)` can raise a plain `ValueError` for huge integer literals before the message reaches normal validation. Because this task requested tests only, the server is intentionally not patched here.
+
+## Additional debug/fuzz testing notes
+
+The chat input path includes a simple per-client flood guard in `Game.receive_chat()`. In normal/non-debug execution the guard still silently ignores messages sent too quickly, preserving current gameplay behavior. When `debug_mode_enabled()` returns true, the guard is skipped so fuzz suites can repeatedly exercise chat sanitization and JSON parsing without being blocked by rate limiting. Tests use `SNAKE_DEBUG=1` through a temporary environment helper for those fuzz-only paths.
+
+Additional negative coverage now includes:
+
+- `test_server_debug_chat_flood.py`: verifies non-debug chat flood behavior is unchanged and `SNAKE_DEBUG=1` disables the flood guard for tests/debugging.
+- `test_server_pseudo_json_fuzz_inputs.py`: builds JSON-shaped strings manually instead of using `json.dumps`, including unescaped quotes, braces, NUL bytes, control characters, duplicate keys, and broken structure.
+- `test_server_protocol_violation_inputs.py`: checks clients that violate the documented protocol, including unknown in-game message types, case variants, duplicate JSON keys, lower-case Game-ID join attempts, and duplicate nicknames.
+
+The canonical in-game client message types remain exactly `input`, `sprint`, `telemetry`, and `chat`. Other joined-state message types should be rejected or handled as documented special cases without crashing or corrupting game state.

@@ -26,6 +26,7 @@ from server_input_test_utils import (
     load_server,
     reset_manager,
     set_snake_length,
+    temporary_env,
 )
 
 server = load_server("snake_server_fuzz_inputs")
@@ -187,34 +188,34 @@ async def test_fuzz_public_message_types() -> None:
 
 async def test_fuzz_in_game_message_types() -> None:
     await reset_manager(server)
-    client = await just_play_via_message(server, "Fuzzer123")
-    game = current_game(server, client)
-    game.phase = "running"
-    snake = current_snake(game, client)
-    set_snake_length(server, snake, 8)
+    with temporary_env(SNAKE_DEBUG="1"):
+        assert server.debug_mode_enabled()
+        client = await just_play_via_message(server, "Fuzzer123")
+        game = current_game(server, client)
+        game.phase = "running"
+        snake = current_snake(game, client)
+        set_snake_length(server, snake, 8)
 
-    for msg_type in ["input", "sprint", "telemetry", "chat"]:
-        for _ in range(90):
-            # Keep the game alive and the client inside the game while field fuzzing.
+        for msg_type in ["input", "sprint", "telemetry", "chat"]:
+            for _ in range(90):
+                # Keep the game alive and the client inside the game while field fuzzing.
+                client.game_id = game.game_id
+                client.snake_id = snake.snake_id
+                snake.alive = True
+                game.phase = "running"
+                payload = random_payload(msg_type)
+                await server.handle_message(client, json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+                assert_client_invariants(client)
+                assert_server_invariants()
+
+        # Fuzz leave_game separately because it intentionally removes the client.
+        for _ in range(20):
             client.game_id = game.game_id
-            client.snake_id = snake.snake_id
-            snake.alive = True
-            game.phase = "running"
-            if msg_type == "chat":
-                client.last_chat_time = 0
-            payload = random_payload(msg_type)
-            await server.handle_message(client, json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+            client.snake_id = snake.snake_id if snake.snake_id in game.snakes else None
+            await server.handle_message(client, json.dumps(random_payload("leave_game"), ensure_ascii=False, separators=(",", ":")))
+            assert client.game_id is None
             assert_client_invariants(client)
             assert_server_invariants()
-
-    # Fuzz leave_game separately because it intentionally removes the client.
-    for _ in range(20):
-        client.game_id = game.game_id
-        client.snake_id = snake.snake_id if snake.snake_id in game.snakes else None
-        await server.handle_message(client, json.dumps(random_payload("leave_game"), ensure_ascii=False, separators=(",", ":")))
-        assert client.game_id is None
-        assert_client_invariants(client)
-        assert_server_invariants()
 
     await cleanup_server(server)
 

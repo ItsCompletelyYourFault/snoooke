@@ -541,8 +541,7 @@ class Game:
             client.send_control({"type": "error", "code": "CHAT_INVALID", "message": "Chat message must be 1-255 characters."})
             return
 
-        if client.last_chat_time+CHAT_HISTORY_LIMIT > now:
-            #print(f"Ignoring chat message from {client.nickname} for flood ...", flush=True)
+        if not debug_mode_enabled() and client.last_chat_time + CHAT_HISTORY_LIMIT > now:
             return
 
         async with self.lock:

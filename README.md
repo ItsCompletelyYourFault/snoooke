@@ -289,3 +289,39 @@ Security test runner:
 ```
 
 This runner includes the new tests. It will return non-zero until the Python huge-integer parsing issue above is fixed in `server.py`.
+
+## Debug-mode chat flood behavior
+
+`server.py` keeps the simple chat flood guard during normal execution. For local debugger/fuzz testing, the guard is skipped when `debug_mode_enabled()` is true. The easiest way to force this in tests or a terminal is:
+
+```bash
+SNAKE_DEBUG=1 python3 test_server_debug_chat_flood.py
+```
+
+The shared test helper also provides a temporary environment context used by fuzz tests so chat sanitization can be exercised repeatedly without rate-limit interference.
+
+## Additional server input tests
+
+New test files:
+
+- `test_server_debug_chat_flood.py` checks that normal chat flood behavior remains intact and that debug mode disables it.
+- `test_server_pseudo_json_fuzz_inputs.py` sends JSON-shaped but manually assembled unsafe/broken messages without `json.dumps` escaping.
+- `test_server_protocol_violation_inputs.py` sends protocol-violating message types, case variants, duplicate JSON keys, lower-case Game-ID joins, and duplicate nicknames.
+
+Run the complete server suite:
+
+```bash
+./run_all_server_tests.sh
+```
+
+Run only unsafe/fuzz/security input tests:
+
+```bash
+./run_input_security_tests.sh
+```
+
+Run the intentionally unsafe broken-message fuzz bundle:
+
+```bash
+./run_unsafe_fuzz_tests.sh
+```

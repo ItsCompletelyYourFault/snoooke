@@ -173,6 +173,30 @@ def assert_error(client: DummyClient, code: str) -> None:
     assert any(msg.get("type") == "error" and msg.get("code") == code for msg in client.control_messages), client.control_messages
 
 
+class temporary_env:
+    """Temporarily set/unset environment variables for one test block."""
+
+    def __init__(self, **updates: str | None) -> None:
+        self.updates = updates
+        self.old: dict[str, str | None] = {}
+
+    def __enter__(self):
+        for name, value in self.updates.items():
+            self.old[name] = os.environ.get(name)
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        for name, value in self.old.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+
 def run_import_subprocess(extra_env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     code = (
         "import importlib.util, sys; "
